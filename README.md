@@ -1,0 +1,61 @@
+# Distributed Secrets Vault Client
+
+This `client` folder is a standalone project that represents the external client system in the architecture.
+
+## What it does
+
+- Connects to the future gateway over HTTP.
+- Sends create/get/update/delete requests to `/api/v1/secrets`.
+- Supports optional bearer token auth.
+- Retries retryable failures (`503`, `429`) with fixed delay.
+
+## Requirements
+
+- The Distributed Secrets Vault server must already be running.
+- Set `DSV_API_BASE_URL` to the server or gateway URL you want the CLI to call.
+- The client is CLI-only; it does not start its own server.
+- The commands to start the client must be run from the 'client' folder
+
+## Project structure
+
+- `src/main/java/.../Client.java` - reusable HTTP client.
+- `src/main/java/.../ClientCli.java` - runnable CLI.
+
+## Environment variables
+
+- `DSV_API_BASE_URL` (default `http://localhost:8080`)
+- `DSV_CLIENT_CONNECT_TIMEOUT_MS` (default `3000`)
+- `DSV_CLIENT_READ_TIMEOUT_MS` (default `5000`)
+- `DSV_CLIENT_MAX_RETRIES` (default `2`)
+- `DSV_CLIENT_RETRY_DELAY_MS` (default `200`)
+- `DSV_CLIENT_BEARER_TOKEN` (optional)
+- `DSV_CLIENT_DEBUG_HTTP` (optional, `true` to print request attempt/status logs)
+
+## Run CLI (interactive)
+
+### Windows (PowerShell)
+
+```powershell
+$env:DSV_API_BASE_URL="http://localhost:8080"
+mvn compile exec:java
+```
+
+### macOS / Linux (bash or zsh)
+
+```bash
+export DSV_API_BASE_URL="http://localhost:8080"
+mvn compile exec:java
+```
+
+Then type commands in the prompt:
+
+```text
+ping
+create db-password hunter2 admin
+get db-password
+update db-password hunter2 db-password new-secret
+delete db-password
+help
+exit
+```
+
