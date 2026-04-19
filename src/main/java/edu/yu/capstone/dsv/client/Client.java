@@ -2,6 +2,7 @@ package edu.yu.capstone.dsv.client;
 
 import edu.yu.capstone.dsv.client.dto.CreateSecretRequest;
 import edu.yu.capstone.dsv.client.dto.DeleteSecretRequest;
+import edu.yu.capstone.dsv.client.dto.GetSecretRequest;
 import edu.yu.capstone.dsv.client.dto.UpdateSecretRequest;
 
 import java.io.IOException;
@@ -37,15 +38,14 @@ public class Client {
         return send("POST", SECRETS_PATH, payload, 201);
     }
 
-    public String getSecret(String id) {
-        String encodedId = URLEncoder.encode(id, StandardCharsets.UTF_8);
-        return send("GET", SECRETS_PATH + "/" + encodedId, null, 200);
+    public String getSecret(GetSecretRequest request) {
+        String payload = "{\"id\":\"" + escape(request.id())
+                + "\",\"authKey\":\"" + escape(request.authKey()) + "\"}";
+        return send("GET", SECRETS_PATH + "/" + payload, null, 200);
     }
 
     public String updateSecret(UpdateSecretRequest request) {
         String payload = "{\"secretCurrentName\":\"" + escape(request.secretCurrentName())
-                + "\",\"secretCurrentValue\":\"" + escape(request.secretCurrentValue())
-                + "\",\"secretUpdatedName\":\"" + escape(request.secretUpdatedName())
                 + "\",\"secretUpdatedValue\":\"" + escape(request.secretUpdatedValue())
                 + "\",\"authKey\":\"" + escape(request.authKey()) + "\"}";
         return send("PUT", SECRETS_PATH, payload, 200);

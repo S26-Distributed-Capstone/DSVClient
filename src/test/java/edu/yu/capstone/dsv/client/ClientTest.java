@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.yu.capstone.dsv.client.dto.CreateSecretRequest;
 import edu.yu.capstone.dsv.client.dto.DeleteSecretRequest;
+import edu.yu.capstone.dsv.client.dto.GetSecretRequest;
 import edu.yu.capstone.dsv.client.dto.UpdateSecretRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -104,8 +105,8 @@ class ClientTest {
     @Test
     void supportsCrudRequests() {
         String created = client.createSecret(new CreateSecretRequest("db-password", "hunter2", ""));
-        String retrieved = client.getSecret("my-secret");
-        String updated = client.updateSecret(new UpdateSecretRequest("name", "old", "name", "new", ""));
+        String retrieved = client.getSecret(new GetSecretRequest("my-secret", ""));
+        String updated = client.updateSecret(new UpdateSecretRequest("name", "new", ""));
         client.deleteSecret(new DeleteSecretRequest("name", ""));
 
         assertEquals("created", created);
@@ -115,13 +116,13 @@ class ClientTest {
 
     @Test
     void retriesOn503UntilSuccess() {
-        String result = client.getSecret("flaky");
+        String result = client.getSecret(new GetSecretRequest("flaky", ""));
         assertEquals("stable", result);
     }
 
     @Test
     void includesServerMessageInErrors() {
-        ClientException ex = assertThrows(ClientException.class, () -> client.getSecret("missing"));
+        ClientException ex = assertThrows(ClientException.class, () -> client.getSecret(new GetSecretRequest("missing", "")));
         assertEquals(404, ex.getStatusCode());
         assertTrue(ex.getMessage().contains("Unexpected response status"));
         assertTrue(ex.getResponseBody().contains("\"message\""));
@@ -129,7 +130,7 @@ class ClientTest {
 
     @Test
     void rejectsHtmlSuccessResponses() {
-        ClientException ex = assertThrows(ClientException.class, () -> client.getSecret("html-page"));
+        ClientException ex = assertThrows(ClientException.class, () -> client.getSecret(new GetSecretRequest("html-page", "")));
         assertEquals(200, ex.getStatusCode());
         assertTrue(ex.getMessage().contains("Received HTML content instead of API response"));
     }

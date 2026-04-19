@@ -2,6 +2,7 @@ package edu.yu.capstone.dsv.client;
 
 import edu.yu.capstone.dsv.client.dto.CreateSecretRequest;
 import edu.yu.capstone.dsv.client.dto.DeleteSecretRequest;
+import edu.yu.capstone.dsv.client.dto.GetSecretRequest;
 import edu.yu.capstone.dsv.client.dto.UpdateSecretRequest;
 
 import java.util.ArrayList;
@@ -91,35 +92,32 @@ public final class ClientCli {
 	}
 
 	private static void runGet(Client client, String[] args) {
-		if (args.length != 2) {
+		if (args.length != 3) {
 			printUsage();
 			return;
 		}
-
-		String response = client.getSecret(args[1]);
+		GetSecretRequest request = new GetSecretRequest(args[1], args[2]);
+		String response = client.getSecret(request);
 		System.out.println(response);
 	}
 
 	private static void runUpdate(Client client, String[] args) {
-		if (args.length != 5 && args.length != 6) {
+		if (args.length != 4) {
 			printUsage();
 			return;
 		}
-
-		String authKey = args.length == 6 ? args[5] : "";
-		UpdateSecretRequest request = new UpdateSecretRequest(args[1], args[2], args[3], args[4], authKey);
+		UpdateSecretRequest request = new UpdateSecretRequest(args[1], args[2], args[3]);
 		String response = client.updateSecret(request);
 		System.out.println(response);
 	}
 
 	private static void runDelete(Client client, String[] args) {
-		if (args.length != 2 && args.length != 3) {
+		if (args.length != 3) {
 			printUsage();
 			return;
 		}
 
-		String authKey = args.length == 3 ? args[2] : "";
-		String response = client.deleteSecret(new DeleteSecretRequest(args[1], authKey));
+		String response = client.deleteSecret(new DeleteSecretRequest(args[1], args[2]));
 		if (response == null || response.isBlank()) {
 			System.out.println("Delete succeeded (no response body).");
 			return;
@@ -130,10 +128,10 @@ public final class ClientCli {
 	private static void printUsage() {
 		System.out.println("Usage:");
 		System.out.println("  ping");
-		System.out.println("  create <secretName> <secretValue> [authKey]");
-		System.out.println("  get <secretId>");
-		System.out.println("  update <currentName> <currentValue> <updatedName> <updatedValue> [authKey]");
-		System.out.println("  delete <secretName> [authKey]");
+		System.out.println("  create <secretName> <secretValue> <authKey>");
+		System.out.println("  get <secretId> <authKey>");
+		System.out.println("  update <currentName> <updatedValue> <authKey>");
+		System.out.println("  delete <secretName> <authKey>");
 		System.out.println("  help");
 		System.out.println("  exit");
 	}
