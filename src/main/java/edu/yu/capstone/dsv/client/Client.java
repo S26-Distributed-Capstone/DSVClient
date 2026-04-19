@@ -7,9 +7,11 @@ import edu.yu.capstone.dsv.client.dto.UpdateSecretRequest;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.function.Supplier;
 
@@ -37,9 +39,11 @@ public class Client {
     }
 
     public String getSecret(GetSecretRequest request) {
-        String payload = "{\"id\":\"" + escape(request.id())
-                + "\",\"authKey\":\"" + escape(request.authKey()) + "\"}";
-        return send("GET", SECRETS_PATH + "/" + payload, null, 200);
+        String path = SECRETS_PATH + "/" + encodePathSegment(request.id());
+        if (request.authKey() != null && !request.authKey().isBlank()) {
+            path += "?authKey=" + encodeQueryValue(request.authKey());
+        }
+        return send("GET", path, null, 200);
     }
 
     public String updateSecret(UpdateSecretRequest request) {
@@ -173,6 +177,16 @@ public class Client {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private static String encodePathSegment(String value) {
+        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8)
+                .replace("+", "%20");
+    }
+
+    private static String encodeQueryValue(String value) {
+        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8)
+                .replace("+", "%20");
     }
 
     private static boolean isLikelyHtmlResponse(HttpResponse<String> response) {
