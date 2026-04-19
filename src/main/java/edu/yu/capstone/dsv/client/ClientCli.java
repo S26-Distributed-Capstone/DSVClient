@@ -75,19 +75,16 @@ public final class ClientCli {
 			printUsage();
 			return;
 		}
-
 		String response = client.ping();
 		System.out.println(response == null || response.isBlank() ? "OK" : response);
 	}
 
 	private static void runCreate(Client client, String[] args) {
-		if (args.length != 3 && args.length != 4) {
+		if (args.length != 4) {
 			printUsage();
 			return;
 		}
-
-		String authKey = args.length == 4 ? args[3] : "";
-		String response = client.createSecret(new CreateSecretRequest(args[1], args[2], authKey));
+		String response = client.createSecret(new CreateSecretRequest(args[1], args[2], args[3]));
 		System.out.println(response);
 	}
 
