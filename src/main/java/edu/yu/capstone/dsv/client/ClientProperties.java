@@ -10,16 +10,16 @@ public record ClientProperties(
 ) {
     public static ClientProperties fromEnvironment() {
         return new ClientProperties(
-                getenvOrDefault("DSV_API_BASE_URL", "http://localhost:8080"),
+                setEnvOrDefault("DSV_API_BASE_URL", "http://localhost:8080"),
                 parseLongEnv("DSV_CLIENT_CONNECT_TIMEOUT_MS", 3000),
                 parseLongEnv("DSV_CLIENT_READ_TIMEOUT_MS", 5000),
                 parseIntEnv("DSV_CLIENT_MAX_RETRIES", 2),
                 parseLongEnv("DSV_CLIENT_RETRY_DELAY_MS", 200),
-                getenvOrDefault("DSV_CLIENT_BEARER_TOKEN", "")
+                setEnvOrDefault("DSV_CLIENT_BEARER_TOKEN", "")
         );
     }
 
-    private static String getenvOrDefault(String key, String fallback) {
+    private static String setEnvOrDefault(String key, String fallback) {
         String value = System.getenv(key);
         return value == null || value.isBlank() ? fallback : value;
     }

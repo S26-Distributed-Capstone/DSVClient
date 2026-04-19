@@ -2,10 +2,7 @@ package edu.yu.capstone.dsv.client;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import edu.yu.capstone.dsv.client.dto.CreateSecretRequest;
-import edu.yu.capstone.dsv.client.dto.DeleteSecretRequest;
-import edu.yu.capstone.dsv.client.dto.GetSecretRequest;
-import edu.yu.capstone.dsv.client.dto.UpdateSecretRequest;
+import edu.yu.capstone.dsv.client.dto.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,7 +31,7 @@ class ClientTest {
             switch (exchange.getRequestMethod()) {
                 case "POST" -> respond(exchange, 201, "created");
                 case "PUT" -> respond(exchange, 200, "updated");
-                case "DELETE" -> respond(exchange, 204, "");
+                case "DELETE" -> respondNoContent(exchange);
                 default -> respond(exchange, 405, "method not allowed");
             }
         });
@@ -50,15 +47,6 @@ class ClientTest {
         server.createContext("/api/v1/secrets/missing", exchange -> {
             if ("GET".equals(exchange.getRequestMethod())) {
                 respond(exchange, 404, "{\"message\":\"Secret not found\"}");
-                return;
-            }
-            respond(exchange, 405, "method not allowed");
-        });
-
-        server.createContext("/api/v1/secrets/html-page", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                exchange.getResponseHeaders().add("Content-Type", "text/html");
-                respond(exchange, 200, "<!doctype html><html><body>Filter Page</body></html>");
                 return;
             }
             respond(exchange, 405, "method not allowed");
@@ -107,11 +95,12 @@ class ClientTest {
         String created = client.createSecret(new CreateSecretRequest("db-password", "hunter2", ""));
         String retrieved = client.getSecret(new GetSecretRequest("my-secret", ""));
         String updated = client.updateSecret(new UpdateSecretRequest("name", "new", ""));
-        client.deleteSecret(new DeleteSecretRequest("name", ""));
+        String deleted = client.deleteSecret(new DeleteSecretRequest("name", ""));
 
         assertEquals("created", created);
         assertEquals("retrieved", retrieved);
         assertEquals("updated", updated);
+        assertEquals("", deleted);
     }
 
     @Test
@@ -129,17 +118,9 @@ class ClientTest {
     }
 
     @Test
-    void rejectsHtmlSuccessResponses() {
-        ClientException ex = assertThrows(ClientException.class, () -> client.getSecret(new GetSecretRequest("html-page", "")));
-        assertEquals(200, ex.getStatusCode());
-        assertTrue(ex.getMessage().contains("Received HTML content instead of API response"));
-    }
-
-    @Test
     void pingReturnsHealthStatus() {
         assertEquals("OK", client.ping());
     }
-
 
     private static void respond(HttpExchange exchange, int statusCode, String body) throws IOException {
         byte[] payload = body.getBytes(StandardCharsets.UTF_8);
@@ -147,6 +128,11 @@ class ClientTest {
         try (OutputStream output = exchange.getResponseBody()) {
             output.write(payload);
         }
+        exchange.close();
+    }
+
+    private static void respondNoContent(HttpExchange exchange) throws IOException {
+        exchange.sendResponseHeaders(204, -1);
         exchange.close();
     }
 }

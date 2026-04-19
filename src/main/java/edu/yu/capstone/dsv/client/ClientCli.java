@@ -1,9 +1,6 @@
 package edu.yu.capstone.dsv.client;
 
-import edu.yu.capstone.dsv.client.dto.CreateSecretRequest;
-import edu.yu.capstone.dsv.client.dto.DeleteSecretRequest;
-import edu.yu.capstone.dsv.client.dto.GetSecretRequest;
-import edu.yu.capstone.dsv.client.dto.UpdateSecretRequest;
+import edu.yu.capstone.dsv.client.dto.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -126,8 +123,8 @@ public final class ClientCli {
 		System.out.println("Usage:");
 		System.out.println("  ping");
 		System.out.println("  create <secretName> <secretValue> <authKey>");
-		System.out.println("  get <secretId> <authKey>");
-		System.out.println("  update <currentName> <updatedValue> <authKey>");
+		System.out.println("  get <secretName> <authKey>");
+		System.out.println("  update <secretName> <updatedValue> <authKey>");
 		System.out.println("  delete <secretName> <authKey>");
 		System.out.println("  help");
 		System.out.println("  exit");

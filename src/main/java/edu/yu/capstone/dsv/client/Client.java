@@ -1,9 +1,6 @@
 package edu.yu.capstone.dsv.client;
 
-import edu.yu.capstone.dsv.client.dto.CreateSecretRequest;
-import edu.yu.capstone.dsv.client.dto.DeleteSecretRequest;
-import edu.yu.capstone.dsv.client.dto.GetSecretRequest;
-import edu.yu.capstone.dsv.client.dto.UpdateSecretRequest;
+import edu.yu.capstone.dsv.client.dto.*;
 
 import java.io.IOException;
 import java.net.URI;
@@ -39,7 +36,7 @@ public class Client {
     }
 
     public String getSecret(GetSecretRequest request) {
-        String path = SECRETS_PATH + "/" + encodePathSegment(request.id());
+        String path = SECRETS_PATH + "/" + encodePathSegment(request.secretName());
         if (request.authKey() != null && !request.authKey().isBlank()) {
             path += "?authKey=" + encodeQueryValue(request.authKey());
         }
@@ -47,14 +44,14 @@ public class Client {
     }
 
     public String updateSecret(UpdateSecretRequest request) {
-        String payload = "{\"secretCurrentName\":\"" + escape(request.secretCurrentName())
+        String payload = "{\"secretName\":\"" + escape(request.secretName())
                 + "\",\"secretUpdatedValue\":\"" + escape(request.secretUpdatedValue())
                 + "\",\"authKey\":\"" + escape(request.authKey()) + "\"}";
         return send("PUT", SECRETS_PATH, payload, 200);
     }
 
     public String deleteSecret(DeleteSecretRequest request) {
-        String payload = "{\"deleteName\":\"" + escape(request.deleteName())
+        String payload = "{\"secretName\":\"" + escape(request.secretName())
                 + "\",\"authKey\":\"" + escape(request.authKey()) + "\"}";
         return send("DELETE", SECRETS_PATH, payload, 204);
     }
@@ -78,14 +75,6 @@ public class Client {
                             + ". Expected " + expectedStatus + " but got " + response.statusCode(),
                     response.statusCode(),
                     response.body());
-        }
-
-        if (isLikelyHtmlResponse(response)) {
-            throw new ClientException(
-                    "Received HTML content instead of API response for " + method + " " + path
-                            + ". This usually means DSV_API_BASE_URL points to a web filter/login/proxy page instead of the DSV API.",
-                    response.statusCode(),
-                    null);
         }
 
         return response.body() == null ? "" : response.body();
@@ -162,7 +151,6 @@ public class Client {
         if (value == null || value.isBlank()) {
             return "http://localhost:8080";
         }
-
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
@@ -170,7 +158,6 @@ public class Client {
         if (value == null) {
             return "";
         }
-
         return value
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -189,22 +176,6 @@ public class Client {
                 .replace("+", "%20");
     }
 
-    private static boolean isLikelyHtmlResponse(HttpResponse<String> response) {
-        String contentType = response.headers().firstValue("Content-Type").orElse("");
-        String loweredType = contentType.toLowerCase();
-        if (loweredType.contains("text/html") || loweredType.contains("application/xhtml+xml")) {
-            return true;
-        }
-
-        String body = response.body();
-        if (body == null) {
-            return false;
-        }
-
-        String trimmed = body.trim().toLowerCase();
-        return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
-    }
-
     private boolean isDebugHttpEnabled() {
         String value = System.getenv("DSV_CLIENT_DEBUG_HTTP");
         return value != null && "true".equalsIgnoreCase(value.trim());
@@ -216,7 +187,4 @@ public class Client {
         }
         System.err.println("[dsv-client-debug] " + message);
     }
-
 }
-
-

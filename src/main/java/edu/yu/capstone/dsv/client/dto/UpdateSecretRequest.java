@@ -1,10 +1,8 @@
 package edu.yu.capstone.dsv.client.dto;
 
 public record UpdateSecretRequest(
-        String secretCurrentName,
+        String secretName,
         String secretUpdatedValue,
         String authKey
 ) {
 }
-
-

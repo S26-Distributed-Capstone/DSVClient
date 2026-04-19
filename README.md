@@ -1,12 +1,12 @@
 # Distributed Secrets Vault Client
 
-This `client` folder is a standalone project that represents the external client system in the architecture.
+This `DSVClient` repository is a standalone project that represents the external client system in the architecture of the Distributed Secrets Vault project.
 
 ## What it does
 
-- Connects to the future gateway over HTTP.
+- Connects to the gateway over HTTP.
 - Sends create/get/update/delete requests to `/api/v1/secrets`.
-- Supports optional bearer token auth.
+- Requires authentication token to verify user and enable access to that user's secrets.
 - Retries retryable failures (`503`, `429`) with fixed delay.
 
 ## Requirements
@@ -18,7 +18,7 @@ This `client` folder is a standalone project that represents the external client
 
 ## Project structure
 
-- `src/main/java/.../Client.java` - reusable HTTP client.
+- `src/main/java/.../Client.java` - reusable HTTP client with API.
 - `src/main/java/.../ClientCli.java` - runnable CLI.
 
 ## Environment variables
@@ -47,14 +47,14 @@ export DSV_API_BASE_URL="http://localhost:8080"
 mvn compile exec:java
 ```
 
-Then type commands in the prompt:
+Then type commands in the prompt (e.g.):
 
 ```text
 ping
-create db-password hunter2 admin
-get db-password admin
-update db-password new-secret admin
-delete db-password admin
+create secret-name secret-value authKey
+get secret-name authKey
+update secret-name new-secret-value authKey
+delete secret-name authKey
 help
 exit
 ```

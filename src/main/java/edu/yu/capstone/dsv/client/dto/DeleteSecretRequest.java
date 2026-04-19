@@ -1,6 +1,4 @@
 package edu.yu.capstone.dsv.client.dto;
 
-public record DeleteSecretRequest(String deleteName, String authKey) {
+public record DeleteSecretRequest(String secretName, String authKey) {
 }
-
-

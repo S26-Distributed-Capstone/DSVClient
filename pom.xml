@@ -8,7 +8,7 @@
     <artifactId>dsv-client</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>dsv-client</name>
-    <description>Standalone client for calling the Distributed Secrets Vault gateway API.</description>
+    <description>Standalone client for sending HTTP requests to the Distributed Secrets Vault gateway.</description>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
