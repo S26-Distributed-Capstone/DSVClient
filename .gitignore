@@ -4,3 +4,11 @@ target/
 .vscode/
 .DS_Store
 *.class
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
