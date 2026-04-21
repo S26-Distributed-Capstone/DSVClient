@@ -5,7 +5,6 @@ failures (HTTP 503 / 429) and optional debug logging.
 """
 
 import json
-import os
 import sys
 import time
 import urllib.error
@@ -198,10 +197,6 @@ class Client:
 
     @staticmethod
     def _is_debug_http_enabled(config: dict) -> bool:
-        env = os.getenv("DSV_CLIENT_DEBUG_HTTP")
-        if env is not None:
-            return env.strip().lower() == "true"
-
         value = config.get("debug_http", False)
         if isinstance(value, bool):
             return value

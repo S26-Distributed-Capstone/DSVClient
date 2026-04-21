@@ -1,4 +1,5 @@
 import os
+import json
 import subprocess
 import sys
 import tempfile
@@ -106,26 +107,43 @@ class CliTest(unittest.TestCase):
             type(self).passed_tests += 1
 
     def _run_cli_script(self, commands: list[str]) -> subprocess.CompletedProcess[str]:
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
-            tmp.write("\n".join(commands) + "\n")
-            script_path = tmp.name
+        with tempfile.TemporaryDirectory() as temp_home:
+            home_dir = Path(temp_home)
+            config_dir = home_dir / ".dsv_client"
+            config_dir.mkdir(parents=True, exist_ok=True)
 
-        env = os.environ.copy()
-        env["DSV_API_BASE_URL"] = self.base_url
-        env["DSV_CLIENT_MAX_RETRIES"] = "2"
-        env["DSV_CLIENT_RETRY_DELAY_MS"] = "1"
+            with open(config_dir / "config.json", "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "base_url": self.base_url,
+                        "connect_timeout": 3.0,
+                        "read_timeout": 5.0,
+                        "max_retries": 2,
+                        "retry_delay": 0.001,
+                        "debug_http": False,
+                    },
+                    fh,
+                )
 
-        try:
-            return subprocess.run(
-                [sys.executable, "cli.py", "--script", script_path],
-                cwd=self.repo_root,
-                env=env,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-        finally:
-            os.unlink(script_path)
+            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
+                tmp.write("\n".join(commands) + "\n")
+                script_path = tmp.name
+
+            env = os.environ.copy()
+            env["HOME"] = temp_home
+            env["USERPROFILE"] = temp_home
+
+            try:
+                return subprocess.run(
+                    [sys.executable, "cli.py", "--script", script_path],
+                    cwd=self.repo_root,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            finally:
+                os.unlink(script_path)
 
     def test_supports_crud_requests(self):
         result = self._run_cli_script(

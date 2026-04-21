@@ -13,7 +13,6 @@ project. The client is written in Python and runs as a CLI/TUI application.
 - Stores the server URL in `~/.dsv_client/config.json` so
   you only need to configure once.
 - Accepts a script file of commands for batch / automation use.
-- Supports the same environment-variable overrides as the Java client.
 
 ## Requirements
 
@@ -34,8 +33,7 @@ Pass `--setup` (or run `setup` inside interactive mode) to have the wizard ask f
 
 1. **Server URL** — the base address of the DSV gateway (e.g. `http://localhost:8080`).
 
-If you skip setup, the client still runs using defaults and/or environment
-variable overrides.
+If you skip setup, the client still runs using default values.
 
 ## Run CLI (interactive)
 
@@ -47,7 +45,7 @@ You will be dropped into an interactive prompt:
 
 ```
 dsv-client> ping
-dsv-client> create my-secret hunter2 authKey
+dsv-client> create my-secret value authKey
 dsv-client> get my-secret authKey
 dsv-client> update my-secret new-value authKey
 dsv-client> delete my-secret authKey
@@ -122,19 +120,3 @@ All API commands print the response message body returned by the server.
 | `max_retries` | `2` | Max retry attempts on 503/429 |
 | `retry_delay` | `0.2` | Seconds to wait between retries |
 | `debug_http` | `false` | Print request/response debug lines |
-
-## Java-compatible environment overrides
-
-The Python client also supports these environment variables (matching the
-Java CLI), and they take precedence over values stored in
-`~/.dsv_client/config.json`.
-
-| Variable | Meaning |
-|----------|---------|
-| `DSV_API_BASE_URL` | Base URL for the gateway |
-| `DSV_CLIENT_CONNECT_TIMEOUT_MS` | Connect timeout in milliseconds |
-| `DSV_CLIENT_READ_TIMEOUT_MS` | Read timeout in milliseconds |
-| `DSV_CLIENT_MAX_RETRIES` | Retry count for `503` / `429` |
-| `DSV_CLIENT_RETRY_DELAY_MS` | Delay between retries in milliseconds |
-| `DSV_CLIENT_DEBUG_HTTP` | Enables debug logs when set to `true` |
-
