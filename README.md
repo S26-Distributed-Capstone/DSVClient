@@ -8,11 +8,12 @@ project. The client is written in Python and runs as a CLI/TUI application.
 
 - Connects to the gateway over HTTP.
 - Sends create / get / update / delete requests to `/api/v1/secrets`.
-- Supports bearer-token authentication.
+- Uses per-command `authKey` values for secret operation authentication.
 - Retries retryable failures (`503`, `429`) with a configurable delay.
-- Stores the server URL and bearer token in `~/.dsv_client/config.json` so
+- Stores the server URL in `~/.dsv_client/config.json` so
   you only need to configure once.
 - Accepts a script file of commands for batch / automation use.
+- Supports the same environment-variable overrides as the Java client.
 
 ## Requirements
 
@@ -27,14 +28,14 @@ project. The client is written in Python and runs as a CLI/TUI application.
 | `client.py` | Reusable HTTP client with the full secrets API. |
 | `config.py` | Config load/save helpers and interactive setup wizard. |
 
-## First-time setup
+## Setup wizard (optional)
 
-On the first run (or when `--setup` is passed) the wizard asks for:
+Pass `--setup` (or run `setup` inside interactive mode) to have the wizard ask for:
 
 1. **Server URL** — the base address of the DSV gateway (e.g. `http://localhost:8080`).
-2. **Bearer token** — optional; can also be set later with the `login` command.
 
-Configuration is saved to `~/.dsv_client/config.json`.
+If you skip setup, the client still runs using defaults and/or environment
+variable overrides.
 
 ## Run CLI (interactive)
 
@@ -58,7 +59,6 @@ Additional commands available in interactive mode:
 
 | Command | Description |
 |---------|-------------|
-| `login` | Prompt for a bearer token and save it. |
 | `setup` | Re-run the server-URL / token setup wizard. |
 
 ## Run CLI with a script file
@@ -103,11 +103,12 @@ create <secretName> <secretValue> <authKey>
 get <secretName> <authKey>
 update <secretName> <updatedValue> <authKey>
 delete <secretName> <authKey>
-login
 setup
 help
 exit
 ```
+
+All API commands print the response message body returned by the server.
 
 ## Configuration file
 
@@ -116,10 +117,24 @@ exit
 | Key | Default | Description |
 |-----|---------|-------------|
 | `base_url` | *(prompted)* | Gateway base URL |
-| `bearer_token` | `""` | Bearer token for authentication |
 | `connect_timeout` | `3.0` | Connection timeout in seconds |
 | `read_timeout` | `5.0` | Read timeout in seconds |
 | `max_retries` | `2` | Max retry attempts on 503/429 |
 | `retry_delay` | `0.2` | Seconds to wait between retries |
 | `debug_http` | `false` | Print request/response debug lines |
+
+## Java-compatible environment overrides
+
+The Python client also supports these environment variables (matching the
+Java CLI), and they take precedence over values stored in
+`~/.dsv_client/config.json`.
+
+| Variable | Meaning |
+|----------|---------|
+| `DSV_API_BASE_URL` | Base URL for the gateway |
+| `DSV_CLIENT_CONNECT_TIMEOUT_MS` | Connect timeout in milliseconds |
+| `DSV_CLIENT_READ_TIMEOUT_MS` | Read timeout in milliseconds |
+| `DSV_CLIENT_MAX_RETRIES` | Retry count for `503` / `429` |
+| `DSV_CLIENT_RETRY_DELAY_MS` | Delay between retries in milliseconds |
+| `DSV_CLIENT_DEBUG_HTTP` | Enables debug logs when set to `true` |
 

@@ -5,11 +5,13 @@ failures (HTTP 503 / 429) and optional debug logging.
 """
 
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from http import HTTPStatus
 from typing import Optional
 
 
@@ -20,11 +22,13 @@ class ClientException(Exception):
         self,
         message: str,
         status_code: int = -1,
+        reason: Optional[str] = None,
         response_body: Optional[str] = None,
         cause: Optional[Exception] = None,
     ):
         super().__init__(message)
         self.status_code = status_code
+        self.reason = reason
         self.response_body = response_body
         self.cause = cause
 
@@ -39,8 +43,22 @@ class Client:
         self._read_timeout = float(config.get("read_timeout", 5.0))
         self._max_retries = int(config.get("max_retries", 2))
         self._retry_delay = float(config.get("retry_delay", 0.2))
-        self._bearer_token = config.get("bearer_token", "")
-        self._debug_http = bool(config.get("debug_http", False))
+        self._debug_http = self._is_debug_http_enabled(config)
+        self._last_status_code = 0
+        self._last_reason = ""
+        self._last_body = ""
+
+    @property
+    def last_status_code(self) -> int:
+        return self._last_status_code
+
+    @property
+    def last_reason(self) -> str:
+        return self._last_reason
+
+    @property
+    def last_body(self) -> str:
+        return self._last_body
 
     # ------------------------------------------------------------------
     # Public API
@@ -94,17 +112,23 @@ class Client:
     def _send(
         self, method: str, path: str, body: Optional[str], expected_status: int
     ) -> str:
+        started_at_ms = int(time.time() * 1000)
         safe_path = path.split("?")[0]  # omit query params (may contain auth keys)
         self._debug(
             f"Sending {method} {safe_path} "
-            f"(read_timeout={self._read_timeout}, max_retries={self._max_retries})"
+            f"(connect_timeout={self._connect_timeout}, read_timeout={self._read_timeout}, "
+            f"max_retries={self._max_retries})"
         )
         max_attempts = self._max_retries + 1
 
         for attempt in range(1, max_attempts + 1):
             self._debug(f"HTTP attempt {attempt} of {max_attempts}")
             try:
-                status_code, response_body = self._do_request(method, path, body)
+                status_code, reason, response_body = self._do_request(method, path, body)
+                normalized_reason = self._normalize_reason(status_code, reason)
+                self._last_status_code = status_code
+                self._last_reason = normalized_reason
+                self._last_body = response_body or ""
 
                 if status_code in (503, 429) and attempt < max_attempts:
                     self._debug(
@@ -114,20 +138,22 @@ class Client:
                     time.sleep(self._retry_delay)
                     continue
 
-                self._debug(f"Received {status_code} for {method} {safe_path}")
+                elapsed_ms = int(time.time() * 1000) - started_at_ms
+                self._debug(
+                    f"Received {status_code} for {method} {safe_path} in {elapsed_ms} ms"
+                )
 
                 if status_code != expected_status:
                     raise ClientException(
                         f"Unexpected response status for {method} {safe_path}. "
                         f"Expected {expected_status} but got {status_code}",
                         status_code,
+                        normalized_reason,
                         response_body,
                     )
 
                 return response_body or ""
 
-            except ClientException:
-                raise
             except OSError as exc:
                 self._debug(f"Attempt {attempt} failed with OSError: {exc}")
                 if attempt >= max_attempts:
@@ -135,28 +161,50 @@ class Client:
                         "Gateway request failed after retries", cause=exc
                     ) from exc
                 time.sleep(self._retry_delay)
+                continue
 
         raise ClientException("Gateway request failed unexpectedly")
 
     def _do_request(
         self, method: str, path: str, body: Optional[str]
-    ) -> tuple[int, str]:
+    ) -> tuple[int, str, str]:
         url = self._base_url + path
         data = body.encode("utf-8") if body is not None else None
         headers: dict[str, str] = {"Accept": "application/json"}
         if data is not None:
             headers["Content-Type"] = "application/json"
-        if self._bearer_token:
-            headers["Authorization"] = f"Bearer {self._bearer_token}"
 
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
         try:
-            with urllib.request.urlopen(req, timeout=self._read_timeout) as resp:
-                return resp.status, resp.read().decode("utf-8")
+            timeout_seconds = max(self._connect_timeout, self._read_timeout)
+            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+                return resp.status, str(getattr(resp, "reason", "") or ""), resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            return exc.code, exc.read().decode("utf-8")
+            return exc.code, str(getattr(exc, "reason", "") or ""), exc.read().decode("utf-8")
 
     def _debug(self, message: str) -> None:
         if self._debug_http:
             print(f"[dsv-client-debug] {message}", file=sys.stderr)
+
+    @staticmethod
+    def _normalize_reason(status_code: int, reason: str) -> str:
+        if reason and reason.strip():
+            return reason.strip()
+        try:
+            return HTTPStatus(status_code).phrase
+        except ValueError:
+            return ""
+
+    @staticmethod
+    def _is_debug_http_enabled(config: dict) -> bool:
+        env = os.getenv("DSV_CLIENT_DEBUG_HTTP")
+        if env is not None:
+            return env.strip().lower() == "true"
+
+        value = config.get("debug_http", False)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() == "true"
+        return bool(value)

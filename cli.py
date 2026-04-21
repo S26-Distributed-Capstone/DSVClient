@@ -17,11 +17,12 @@ Run the setup wizard explicitly::
 """
 
 import argparse
+import json
 import sys
 from typing import Optional
 
 from client import Client, ClientException
-from config import is_configured, load_config, save_config, setup_wizard
+from config import load_config, setup_wizard
 
 
 # ---------------------------------------------------------------------------
@@ -30,39 +31,46 @@ from config import is_configured, load_config, save_config, setup_wizard
 
 def _run_ping(client: Client, args: list[str]) -> None:
     if len(args) != 1:
-        _print_usage()
+        _print_invalid_parameters("ping", "ping")
         return
     response = client.ping()
-    print(response if response.strip() else "OK")
+    _print_http_response(response)
 
 
 def _run_create(client: Client, args: list[str]) -> None:
     if len(args) != 4:
-        _print_usage()
+        _print_invalid_parameters(
+            "create", "create <secretName> <secretValue> <authKey>"
+        )
         return
-    print(client.create_secret(args[1], args[2], args[3]))
+    response = client.create_secret(args[1], args[2], args[3])
+    _print_http_response(response)
 
 
 def _run_get(client: Client, args: list[str]) -> None:
     if len(args) != 3:
-        _print_usage()
+        _print_invalid_parameters("get", "get <secretName> <authKey>")
         return
-    print(client.get_secret(args[1], args[2]))
+    response = client.get_secret(args[1], args[2])
+    _print_http_response(response)
 
 
 def _run_update(client: Client, args: list[str]) -> None:
     if len(args) != 4:
-        _print_usage()
+        _print_invalid_parameters(
+            "update", "update <secretName> <updatedValue> <authKey>"
+        )
         return
-    print(client.update_secret(args[1], args[2], args[3]))
+    response = client.update_secret(args[1], args[2], args[3])
+    _print_http_response(response)
 
 
 def _run_delete(client: Client, args: list[str]) -> None:
     if len(args) != 3:
-        _print_usage()
+        _print_invalid_parameters("delete", "delete <secretName> <authKey>")
         return
     response = client.delete_secret(args[1], args[2])
-    print(response if response.strip() else "Delete succeeded (no response body).")
+    _print_http_response(response)
 
 
 def _run_command(client: Client, args: list[str]) -> None:
@@ -83,26 +91,9 @@ def _run_command(client: Client, args: list[str]) -> None:
                 _run_delete(client, args)
             case _:
                 print(f"Unknown command: {args[0]}")
-                _print_usage()
+                print("Type 'help' to print commands.")
     except ClientException as exc:
         _print_request_failure(exc)
-
-
-# ---------------------------------------------------------------------------
-# Login helper
-# ---------------------------------------------------------------------------
-
-def _run_login(config: dict) -> tuple[dict, Client]:
-    """Prompt for a bearer token, persist it, and return an updated client."""
-    print("=== Login ===")
-    token = input("Bearer token: ").strip()
-    if token:
-        config["bearer_token"] = token
-        save_config(config)
-        print("Token saved.")
-    else:
-        print("No token provided; login cancelled.")
-    return config, Client(config)
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +107,6 @@ def _print_usage() -> None:
     print("  get <secretName> <authKey>")
     print("  update <secretName> <updatedValue> <authKey>")
     print("  delete <secretName> <authKey>")
-    print("  login")
     print("  setup")
     print("  help")
     print("  exit")
@@ -127,12 +117,47 @@ def _print_welcome() -> None:
     print("Type a command and press Enter. Use 'help' to print commands.")
 
 
+def _print_invalid_parameters(command: str, expected_usage: str) -> None:
+    print(f"Invalid parameters for '{command}'.")
+    print(f"Expected: {expected_usage}")
+
+
 def _print_request_failure(exc: ClientException) -> None:
-    print(f"Request failed: {exc}", file=sys.stderr)
-    if exc.status_code > 0:
-        print(f"Status: {exc.status_code}", file=sys.stderr)
     if exc.response_body and exc.response_body.strip():
-        print(f"Body: {exc.response_body}", file=sys.stderr)
+        _print_http_response(exc.response_body)
+        return
+    print(str(exc))
+
+
+def _print_http_response(body: str) -> None:
+    if body and body.strip():
+        print(_extract_response_message(body))
+    else:
+        print("(no response body)")
+
+
+def _extract_response_message(body: str) -> str:
+    """Return a user-friendly message extracted from a response body."""
+    text = body.strip()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+    if isinstance(payload, str):
+        return payload
+
+    if isinstance(payload, dict):
+        if "message" in payload:
+            value = payload.get("message")
+            return str(value) if value is not None else ""
+
+        if len(payload) == 1:
+            value = next(iter(payload.values()))
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return "" if value is None else str(value)
+
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -198,14 +223,10 @@ def _interactive(client: Client, config: dict) -> None:
             client = Client(config)
             continue
 
-        if line.lower() == "login":
-            config, client = _run_login(config)
-            continue
-
         _run_command(client, _parse_line(line))
 
 
-def _run_script(client: Client, config: dict, script_file: str) -> None:
+def _run_script(client: Client, script_file: str) -> None:
     """Execute commands from *script_file*, one per line."""
     try:
         with open(script_file, "r", encoding="utf-8") as fh:
@@ -226,7 +247,7 @@ def _run_script(client: Client, config: dict, script_file: str) -> None:
             _print_usage()
             continue
 
-        if line.lower() in ("setup", "login"):
+        if line.lower() == "setup":
             print(
                 f"'{line}' command is not supported in script mode.",
                 file=sys.stderr,
@@ -259,13 +280,13 @@ def main() -> None:
 
     config = load_config()
 
-    if parsed.setup or not is_configured(config):
+    if parsed.setup:
         config = setup_wizard(config)
 
     client = Client(config)
 
     if parsed.script:
-        _run_script(client, config, parsed.script)
+        _run_script(client, parsed.script)
     else:
         _interactive(client, config)
 
