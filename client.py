@@ -71,7 +71,7 @@ class Client:
             {
                 "secretName": secret_name,
                 "secretValue": secret_value,
-                "authKey": auth_key,
+                "user": auth_key,
             }
         )
         return self._send("POST", self.SECRETS_PATH, payload, 201)
@@ -80,7 +80,7 @@ class Client:
         encoded_name = urllib.parse.quote(secret_name, safe="")
         path = f"{self.SECRETS_PATH}/{encoded_name}"
         if auth_key:
-            path += f"?authKey={urllib.parse.quote(auth_key, safe='')}"
+            path += f"?user={urllib.parse.quote(auth_key, safe='')}"
         return self._send("GET", path, None, 200)
 
     def update_secret(
@@ -88,9 +88,9 @@ class Client:
     ) -> str:
         payload = json.dumps(
             {
-                "secretName": secret_name,
+                "secretCurrentName": secret_name,
                 "secretUpdatedValue": secret_updated_value,
-                "authKey": auth_key,
+                "user": auth_key,
             }
         )
         return self._send("PUT", self.SECRETS_PATH, payload, 200)
@@ -98,8 +98,8 @@ class Client:
     def delete_secret(self, secret_name: str, auth_key: str) -> str:
         payload = json.dumps(
             {
-                "secretName": secret_name,
-                "authKey": auth_key,
+                "deleteName": secret_name,
+                "user": auth_key,
             }
         )
         return self._send("DELETE", self.SECRETS_PATH, payload, 204)
