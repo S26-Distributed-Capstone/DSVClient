@@ -2,7 +2,7 @@
 
 This `DSVClient` repository is a standalone project that represents the
 external client system in the architecture of the Distributed Secrets Vault
-project. The client is written in Python and runs as a CLI/TUI application.
+project. The client is written in Python and runs as a command-line tool.
 
 ## What it does
 
@@ -18,54 +18,63 @@ project. The client is written in Python and runs as a CLI/TUI application.
 
 - Python 3.10 or later (no third-party packages required — uses stdlib only).
 - The Distributed Secrets Vault server must already be running.
+- `curl` and `tar` for install script usage.
 
 ## Project structure
 
 | File | Purpose |
 |------|---------|
-| `cli.py` | Runnable CLI entry point (interactive and script modes). |
+| `cli.py` | Runnable CLI entry point for direct command execution. |
 | `client.py` | Reusable HTTP client with the full secrets API. |
 | `config.py` | Config load/save helpers and interactive setup wizard. |
+| `scripts/install.sh` | Curl-able installer that pulls from GitHub and installs `dsvc`. |
+| `scripts/uninstall.sh` | Removes the installed runtime and launcher symlink. |
 
-## Setup wizard (optional)
+## Install (recommended)
 
-Pass `--setup` (or run `setup` inside interactive mode) to have the wizard ask for:
-
-1. **Server URL** — the base address of the DSV gateway (e.g. `http://localhost:8080`).
-
-If you skip setup, the client still runs using default values.
-
-## Run CLI (interactive)
+Install directly from GitHub:
 
 ```bash
-python cli.py
+curl -fsSL https://raw.githubusercontent.com/S26-Distributed-Capstone/DSVClient/main/scripts/install.sh | bash
 ```
 
-You will be dropped into an interactive prompt:
+Optional installer overrides:
+- `DSVC_REF=<branch-or-tag>` to install from a different GitHub ref.
+- `DSVC_TARBALL_URL=<url>` to install from an explicit tarball URL.
 
+The installer:
+- Downloads this repo from GitHub.
+- Installs the source files into `~/.local/share/dsvc/src` (no pip install step).
+- Creates `~/.local/bin/dsvc` so you can run `dsvc` from anywhere.
+- Prompts for initial setup and writes `~/.dsv_client/config.json`.
+
+If `~/.local/bin` is not on your `PATH`, add it in your shell profile:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
-dsv-client> ping
-dsv-client> create my-secret value authKey
-dsv-client> get my-secret authKey
-dsv-client> update my-secret new-value authKey
-dsv-client> delete my-secret authKey
-dsv-client> help
-dsv-client> exit
+
+## Run commands
+
+Use one-shot command style:
+
+```bash
+dsvc ping
+dsvc create my-secret value authKey
+dsvc get my-secret authKey
+dsvc update my-secret new-value authKey
+dsvc delete my-secret authKey
 ```
 
-Additional commands available in interactive mode:
+With no arguments, `dsvc` shows help and exits.
 
-| Command | Description |
-|---------|-------------|
-| `setup` | Re-run the server-URL / token setup wizard. |
-
-## Run CLI with a script file
+## Batch mode
 
 Pass `--script <file>` to execute a batch of commands non-interactively.
 Lines starting with `#` and blank lines are ignored.
 
 ```bash
-python cli.py --script commands.txt
+dsvc --script commands.txt
 ```
 
 Example `commands.txt`:
@@ -90,7 +99,7 @@ delete db-password myAuthKey
 ## Run setup wizard explicitly
 
 ```bash
-python cli.py --setup
+dsvc repl
 ```
 
 ## Available commands
@@ -101,12 +110,31 @@ create <secretName> <secretValue> <authKey>
 get <secretName> <authKey>
 update <secretName> <updatedValue> <authKey>
 delete <secretName> <authKey>
-setup
-help
-exit
 ```
 
 All API commands print the response message body returned by the server.
+
+`dsvc repl` starts the interactive prompt, where `help` and `exit` are also
+available.
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/S26-Distributed-Capstone/DSVClient/main/scripts/uninstall.sh | bash
+```
+
+The uninstall script removes:
+- `~/.local/bin/dsvc` (if it is a symlink)
+- `~/.local/share/dsvc` runtime install directory
+- optionally `~/.dsv_client/config.json` (prompted)
+
+## Migration notes (`python cli.py` -> `dsvc`)
+
+- Old usage: `python cli.py --script commands.txt`
+- New usage: `dsvc --script commands.txt`
+- Old usage: `python cli.py` interactive by default
+- New usage: `dsvc repl` for interactive mode
+- New install flow handles setup during installation.
 
 ## Configuration file
 

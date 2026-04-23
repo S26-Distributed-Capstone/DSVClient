@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
-"""Distributed Secrets Vault — Python CLI client.
+"""Distributed Secrets Vault command-line client.
 
-Usage
------
-Interactive mode (prompts for commands one at a time)::
+Examples::
 
-    python cli.py
-
-Batch / script mode (reads commands from a file)::
-
-    python cli.py --script commands.txt
-
-Run the setup wizard explicitly::
-
-    python cli.py --setup
+    dsvc ping
+    dsvc create my-secret value authKey
+    dsvc --script commands.txt
+    dsvc repl
 """
 
 import argparse
@@ -22,7 +15,7 @@ import sys
 from typing import Optional
 
 from client import Client, ClientException
-from config import load_config, setup_wizard
+from config import load_config
 
 
 # ---------------------------------------------------------------------------
@@ -102,14 +95,13 @@ def _run_command(client: Client, args: list[str]) -> None:
 
 def _print_usage() -> None:
     print("Usage:")
-    print("  ping")
-    print("  create <secretName> <secretValue> <authKey>")
-    print("  get <secretName> <authKey>")
-    print("  update <secretName> <updatedValue> <authKey>")
-    print("  delete <secretName> <authKey>")
-    print("  setup")
-    print("  help")
-    print("  exit")
+    print("  dsvc ping")
+    print("  dsvc create <secretName> <secretValue> <authKey>")
+    print("  dsvc get <secretName> <authKey>")
+    print("  dsvc update <secretName> <updatedValue> <authKey>")
+    print("  dsvc delete <secretName> <authKey>")
+    print("  dsvc --script <file>")
+    print("  dsvc repl")
 
 
 def _print_welcome() -> None:
@@ -195,7 +187,7 @@ def _parse_line(line: str) -> list[str]:
 # Execution modes
 # ---------------------------------------------------------------------------
 
-def _interactive(client: Client, config: dict) -> None:
+def _interactive(client: Client) -> None:
     """Run the interactive REPL."""
     _print_welcome()
     _print_usage()
@@ -216,11 +208,6 @@ def _interactive(client: Client, config: dict) -> None:
 
         if line.lower() == "help":
             _print_usage()
-            continue
-
-        if line.lower() == "setup":
-            config = setup_wizard(config)
-            client = Client(config)
             continue
 
         _run_command(client, _parse_line(line))
@@ -247,13 +234,6 @@ def _run_script(client: Client, script_file: str) -> None:
             _print_usage()
             continue
 
-        if line.lower() == "setup":
-            print(
-                f"'{line}' command is not supported in script mode.",
-                file=sys.stderr,
-            )
-            continue
-
         print(f"dsv-client> {line}")
         _run_command(client, _parse_line(line))
 
@@ -272,23 +252,36 @@ def main() -> None:
         help="path to a script file with commands to execute (one per line)",
     )
     parser.add_argument(
-        "--setup",
-        action="store_true",
-        help="run the setup wizard before starting",
+        "command",
+        nargs=argparse.REMAINDER,
+        help="command to execute (ping, create, get, update, delete, repl)",
     )
     parsed = parser.parse_args()
 
-    config = load_config()
+    if parsed.script and parsed.command:
+        parser.error("command arguments cannot be used together with --script")
 
-    if parsed.setup:
-        config = setup_wizard(config)
-
-    client = Client(config)
+    client = Client(load_config())
 
     if parsed.script:
         _run_script(client, parsed.script)
-    else:
-        _interactive(client, config)
+        return
+
+    if not parsed.command:
+        parser.print_help()
+        print()
+        _print_usage()
+        return
+
+    operation = parsed.command[0].lower()
+    if operation == "help":
+        _print_usage()
+        return
+    if operation == "repl":
+        _interactive(client)
+        return
+
+    _run_command(client, parsed.command)
 
 
 if __name__ == "__main__":

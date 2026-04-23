@@ -107,6 +107,22 @@ class CliTest(unittest.TestCase):
             type(self).passed_tests += 1
 
     def _run_cli_script(self, commands: list[str]) -> subprocess.CompletedProcess[str]:
+        return self._run_cli(
+            ["--script", self._build_script(commands)],
+            cleanup_script=True,
+        )
+
+    def _build_script(self, commands: list[str]) -> str:
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
+            tmp.write("\n".join(commands) + "\n")
+            return tmp.name
+
+    def _run_cli(
+        self,
+        args: list[str],
+        input_text: str = "",
+        cleanup_script: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as temp_home:
             home_dir = Path(temp_home)
             config_dir = home_dir / ".dsv_client"
@@ -125,25 +141,23 @@ class CliTest(unittest.TestCase):
                     fh,
                 )
 
-            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
-                tmp.write("\n".join(commands) + "\n")
-                script_path = tmp.name
-
             env = os.environ.copy()
             env["HOME"] = temp_home
             env["USERPROFILE"] = temp_home
 
             try:
                 return subprocess.run(
-                    [sys.executable, "cli.py", "--script", script_path],
+                    [sys.executable, "cli.py", *args],
                     cwd=self.repo_root,
                     env=env,
                     text=True,
+                    input=input_text,
                     capture_output=True,
                     check=False,
                 )
             finally:
-                os.unlink(script_path)
+                if cleanup_script and args and args[0] == "--script":
+                    os.unlink(args[1])
 
     def test_supports_crud_requests(self):
         result = self._run_cli_script(
@@ -177,10 +191,24 @@ class CliTest(unittest.TestCase):
         self.assertNotIn("HTTP 404", result.stdout)
 
     def test_ping_returns_health_status(self):
-        result = self._run_cli_script(["ping"])
+        result = self._run_cli(["ping"])
 
         self.assertEqual(0, result.returncode)
         self.assertIn("OK", result.stdout)
+
+    def test_no_args_prints_help_and_exits(self):
+        result = self._run_cli([])
+
+        self.assertEqual(0, result.returncode)
+        self.assertIn("usage:", result.stdout)
+        self.assertIn("dsvc --script <file>", result.stdout)
+
+    def test_repl_command_runs_interactive_mode(self):
+        result = self._run_cli(["repl"], input_text="help\nexit\n")
+
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Distributed Secrets Vault Client CLI", result.stdout)
+        self.assertIn("Goodbye.", result.stdout)
 
 
 if __name__ == "__main__":
