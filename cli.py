@@ -6,7 +6,6 @@ Examples::
     dsvc ping
     dsvc create my-secret value authKey
     dsvc --script commands.txt
-    dsvc repl
 """
 
 import argparse
@@ -101,12 +100,6 @@ def _print_usage() -> None:
     print("  dsvc update <secretName> <updatedValue> <authKey>")
     print("  dsvc delete <secretName> <authKey>")
     print("  dsvc --script <file>")
-    print("  dsvc repl")
-
-
-def _print_welcome() -> None:
-    print("Distributed Secrets Vault Client CLI")
-    print("Type a command and press Enter. Use 'help' to print commands.")
 
 
 def _print_invalid_parameters(command: str, expected_usage: str) -> None:
@@ -184,33 +177,8 @@ def _parse_line(line: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Execution modes
+# Execution mode
 # ---------------------------------------------------------------------------
-
-def _interactive(client: Client) -> None:
-    """Run the interactive REPL."""
-    _print_welcome()
-    _print_usage()
-
-    while True:
-        try:
-            line = input("dsv-client> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nGoodbye.")
-            break
-
-        if not line:
-            continue
-
-        if line.lower() in ("exit", "quit"):
-            print("Goodbye.")
-            break
-
-        if line.lower() == "help":
-            _print_usage()
-            continue
-
-        _run_command(client, _parse_line(line))
 
 
 def _run_script(client: Client, script_file: str) -> None:
@@ -227,14 +195,10 @@ def _run_script(client: Client, script_file: str) -> None:
         if not line or line.startswith("#"):
             continue
 
-        if line.lower() in ("exit", "quit"):
-            break
-
         if line.lower() == "help":
             _print_usage()
             continue
 
-        print(f"dsv-client> {line}")
         _run_command(client, _parse_line(line))
 
 
@@ -254,7 +218,7 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs=argparse.REMAINDER,
-        help="command to execute (ping, create, get, update, delete, repl)",
+        help="command to execute (ping, create, get, update, delete)",
     )
     parsed = parser.parse_args()
 
@@ -276,9 +240,6 @@ def main() -> None:
     operation = parsed.command[0].lower()
     if operation == "help":
         _print_usage()
-        return
-    if operation == "repl":
-        _interactive(client)
         return
 
     _run_command(client, parsed.command)

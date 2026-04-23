@@ -96,12 +96,6 @@ update db-password new-value myAuthKey
 delete db-password myAuthKey
 ```
 
-## Run setup wizard explicitly
-
-```bash
-dsvc repl
-```
-
 ## Available commands
 
 ```
@@ -113,9 +107,6 @@ delete <secretName> <authKey>
 ```
 
 All API commands print the response message body returned by the server.
-
-`dsvc repl` starts the interactive prompt, where `help` and `exit` are also
-available.
 
 ## Uninstall
 
@@ -133,7 +124,7 @@ The uninstall script removes:
 - Old usage: `python cli.py --script commands.txt`
 - New usage: `dsvc --script commands.txt`
 - Old usage: `python cli.py` interactive by default
-- New usage: `dsvc repl` for interactive mode
+- New usage: run one-shot commands directly, e.g. `dsvc ping`
 - New install flow handles setup during installation.
 
 ## Configuration file

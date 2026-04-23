@@ -203,12 +203,10 @@ class CliTest(unittest.TestCase):
         self.assertIn("usage:", result.stdout)
         self.assertIn("dsvc --script <file>", result.stdout)
 
-    def test_repl_command_runs_interactive_mode(self):
-        result = self._run_cli(["repl"], input_text="help\nexit\n")
-
+    def test_repl_command_is_rejected(self):
+        result = self._run_cli(["repl"])
         self.assertEqual(0, result.returncode)
-        self.assertIn("Distributed Secrets Vault Client CLI", result.stdout)
-        self.assertIn("Goodbye.", result.stdout)
+        self.assertIn("Unknown command: repl", result.stdout)
 
 
 if __name__ == "__main__":
