@@ -208,7 +208,7 @@ def _run_script(client: Client, script_file: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Distributed Secrets Vault CLI Client"
+        prog="dsvc", description="Distributed Secrets Vault CLI Client"
     )
     parser.add_argument(
         "--script",

@@ -3,12 +3,18 @@ set -euo pipefail
 
 DSVC_GITHUB_REPO="${DSVC_GITHUB_REPO:-S26-Distributed-Capstone/DSVClient}"
 DSVC_REF="${DSVC_REF:-main}"
-DSVC_TARBALL_URL="${DSVC_TARBALL_URL:-}"
+DSVC_RAW_BASE_URL="${DSVC_RAW_BASE_URL:-}"
 DSVC_BASE_URL="${DSVC_BASE_URL:-}"
 RUNTIME_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/dsvc"
 SRC_DIR="$RUNTIME_ROOT/src"
 RUNTIME_BIN_DIR="$RUNTIME_ROOT/bin"
-BIN_DIR="${DSVC_BIN_DIR:-$HOME/.local/bin}"
+if [[ -n "${DSVC_BIN_DIR:-}" ]]; then
+  BIN_DIR="${DSVC_BIN_DIR}"
+elif [[ -w /usr/local/bin ]]; then
+  BIN_DIR="/usr/local/bin"
+else
+  BIN_DIR="$HOME/.local/bin"
+fi
 CONFIG_DIR="$HOME/.dsv_client"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
@@ -19,25 +25,24 @@ require_cmd() {
   fi
 }
 
-download_source() {
-  local tmp_tar="$1"
-
-  if [[ -n "$DSVC_TARBALL_URL" ]]; then
-    curl -fsSL "$DSVC_TARBALL_URL" -o "$tmp_tar"
+raw_base_url() {
+  if [[ -n "$DSVC_RAW_BASE_URL" ]]; then
+    printf "%s" "${DSVC_RAW_BASE_URL%/}"
     return 0
   fi
+  printf "https://raw.githubusercontent.com/%s/%s" "$DSVC_GITHUB_REPO" "$DSVC_REF"
+}
 
-  local branch_url="https://github.com/${DSVC_GITHUB_REPO}/archive/refs/heads/${DSVC_REF}.tar.gz"
-  local tag_url="https://github.com/${DSVC_GITHUB_REPO}/archive/refs/tags/${DSVC_REF}.tar.gz"
-  local fallback_url="https://github.com/${DSVC_GITHUB_REPO}/archive/${DSVC_REF}.tar.gz"
+download_python_sources() {
+  local base_url
+  base_url="$(raw_base_url)"
+  local files=("cli.py" "client.py" "config.py")
+  local file=""
 
-  if curl -fsSL "$branch_url" -o "$tmp_tar"; then
-    return 0
-  fi
-  if curl -fsSL "$tag_url" -o "$tmp_tar"; then
-    return 0
-  fi
-  curl -fsSL "$fallback_url" -o "$tmp_tar"
+  mkdir -p "$SRC_DIR"
+  for file in "${files[@]}"; do
+    curl -fsSL "${base_url}/${file}" -o "${SRC_DIR}/${file}"
+  done
 }
 
 configure_client() {
@@ -106,24 +111,15 @@ PY
 
 main() {
   require_cmd curl
-  require_cmd tar
   require_cmd python3
-
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "$tmp_dir"' EXIT
-
-  local tmp_tar="$tmp_dir/dsvc.tar.gz"
-  download_source "$tmp_tar"
 
   mkdir -p "$RUNTIME_ROOT"
   rm -rf "$SRC_DIR"
-  mkdir -p "$SRC_DIR"
-  tar -xzf "$tmp_tar" --strip-components=1 -C "$SRC_DIR"
+  download_python_sources
 
   if [[ ! -f "$SRC_DIR/cli.py" || ! -f "$SRC_DIR/client.py" || ! -f "$SRC_DIR/config.py" ]]; then
     echo "Error: downloaded source does not contain expected Python client files." >&2
-    echo "Check DSVC_GITHUB_REPO/DSVC_REF (or provide DSVC_TARBALL_URL)." >&2
+    echo "Check DSVC_GITHUB_REPO/DSVC_REF (or provide DSVC_RAW_BASE_URL)." >&2
     exit 1
   fi
 
@@ -145,6 +141,9 @@ EOF
   echo "Installed dsvc to $BIN_DIR/dsvc"
   if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     echo "Add $BIN_DIR to your PATH to run 'dsvc' globally."
+  fi
+  if [[ "$BIN_DIR" == "/usr/local/bin" ]]; then
+    echo "Command is available system-wide as 'dsvc'."
   fi
   echo "Run: dsvc --help"
 }
