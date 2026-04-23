@@ -41,6 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/S26-Distributed-Capstone/DSVClient/
 Optional installer overrides:
 - `DSVC_REF=<branch-or-tag>` to install from a different GitHub ref.
 - `DSVC_TARBALL_URL=<url>` to install from an explicit tarball URL.
+- `DSVC_BASE_URL=<url>` to set the server URL non-interactively.
 
 The installer:
 - Downloads this repo from GitHub.

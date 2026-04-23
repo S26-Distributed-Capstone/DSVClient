@@ -4,6 +4,7 @@ set -euo pipefail
 DSVC_GITHUB_REPO="${DSVC_GITHUB_REPO:-S26-Distributed-Capstone/DSVClient}"
 DSVC_REF="${DSVC_REF:-main}"
 DSVC_TARBALL_URL="${DSVC_TARBALL_URL:-}"
+DSVC_BASE_URL="${DSVC_BASE_URL:-}"
 RUNTIME_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/dsvc"
 SRC_DIR="$RUNTIME_ROOT/src"
 RUNTIME_BIN_DIR="$RUNTIME_ROOT/bin"
@@ -65,7 +66,21 @@ PY
     placeholder="$entered_base_url"
   fi
 
-  read -r -p "Server URL [${placeholder}]: " entered_base_url
+  if [[ -n "$DSVC_BASE_URL" ]]; then
+    entered_base_url="$DSVC_BASE_URL"
+  elif [[ -t 0 ]]; then
+    if ! read -r -p "Server URL [${placeholder}]: " entered_base_url; then
+      entered_base_url="$placeholder"
+    fi
+  elif [[ -r /dev/tty ]]; then
+    if ! read -r -p "Server URL [${placeholder}]: " entered_base_url < /dev/tty; then
+      entered_base_url="$placeholder"
+    fi
+  else
+    echo "No interactive terminal detected. Using default server URL: ${placeholder}"
+    entered_base_url="$placeholder"
+  fi
+
   entered_base_url="${entered_base_url:-$placeholder}"
   entered_base_url="${entered_base_url%/}"
 
