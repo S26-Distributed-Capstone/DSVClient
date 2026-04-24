@@ -77,8 +77,11 @@ def _run_update(client: Client, args: list[str], username: str) -> None:
 
 
 def _run_delete(client: Client, args: list[str], username: str) -> None:
-    response = client.delete_secret(args[1], username)
-    _print_http_response(response)
+    try:
+        client.delete_secret(args[1], username)
+        print("Delete succeeded (HTTP 204 No Content).")
+    except ClientException as exc:
+        _print_delete_failure(exc)
 
 
 def _run_login(config: dict, args: list[str]) -> dict:
@@ -221,6 +224,18 @@ def _print_request_failure(exc: ClientException) -> None:
     if exc.response_body and exc.response_body.strip():
         _print_http_response(exc.response_body)
         return
+    print(str(exc))
+
+
+def _print_delete_failure(exc: ClientException) -> None:
+    if exc.status_code > 0:
+        reason = f" {exc.reason}" if exc.reason else ""
+        print(f"Delete failed (HTTP {exc.status_code}{reason}).")
+        if exc.response_body and exc.response_body.strip():
+            _print_http_response(exc.response_body)
+        return
+
+    print("Delete failed (request error).")
     print(str(exc))
 
 

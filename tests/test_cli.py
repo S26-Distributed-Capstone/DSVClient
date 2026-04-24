@@ -58,16 +58,24 @@ class MockDsvHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         if self.path == "/api/v1/secrets":
-            self._consume_request_body()
+            body = self._consume_request_body()
+            try:
+                payload = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                payload = {}
+            if payload.get("deleteName") == "missing-delete":
+                self._respond(404, "Secret not found")
+                return
             self.send_response(204)
             self.end_headers()
             return
         self._respond(405, "method not allowed")
 
-    def _consume_request_body(self):
+    def _consume_request_body(self) -> str:
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length > 0:
-            self.rfile.read(content_length)
+            return self.rfile.read(content_length).decode("utf-8")
+        return ""
 
     def _respond(self, status_code: int, body: str):
         payload = body.encode("utf-8")
@@ -179,7 +187,14 @@ class CliTest(unittest.TestCase):
         self.assertIn("created", result.stdout)
         self.assertIn("retrieved", result.stdout)
         self.assertIn("updated", result.stdout)
-        self.assertIn("(no response body)", result.stdout)
+        self.assertIn("Delete succeeded (HTTP 204 No Content).", result.stdout)
+
+    def test_delete_reports_error_status(self):
+        result = self._run_cli_script(["delete missing-delete"])
+
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Delete failed (HTTP 404 Not Found).", result.stdout)
+        self.assertIn("Secret not found", result.stdout)
 
     def test_retries_on_503_until_success(self):
         result = self._run_cli_script(["get flaky"])
