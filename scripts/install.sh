@@ -36,6 +36,8 @@ download_python_sources() {
 
 configure_client() {
   local default_base_url="http://localhost:8080"
+  local existing_base_url=""
+  local existing_username=""
   local entered_base_url=""
   local entered_username=""
   local entered_username_trimmed=""
@@ -53,8 +55,14 @@ configure_client() {
     fi
   fi
 
+  if [[ "$has_prompt_tty" -eq 0 ]]; then
+    echo "No interactive terminal detected."
+    echo "Please run install again in an interactive terminal."
+    exit 1
+  fi
+
   if [[ -f "$CONFIG_FILE" ]]; then
-    read -r entered_base_url entered_username < <(python3 - <<'PY' "$CONFIG_FILE"
+    read -r existing_base_url existing_username < <(python3 - <<'PY' "$CONFIG_FILE"
 import json
 import pathlib
 import sys
@@ -71,55 +79,41 @@ PY
 )
   fi
 
+  entered_base_url="$existing_base_url"
+  entered_username="$existing_username"
+
   local placeholder="$default_base_url"
-  if [[ -n "$entered_base_url" ]]; then
-    placeholder="$entered_base_url"
+  if [[ -n "$existing_base_url" ]]; then
+    placeholder="$existing_base_url"
   fi
 
-  if [[ "$has_prompt_tty" -eq 1 ]]; then
-    if ! read -r -u "$prompt_fd" -p "Server URL [${placeholder}]: " entered_base_url; then
-      entered_base_url="$placeholder"
-    fi
-  else
-    if ! IFS= read -r entered_base_url; then
-      echo "No interactive terminal detected. Using default server URL: ${placeholder}"
-      entered_base_url="$placeholder"
-    fi
+  if ! read -r -u "$prompt_fd" -p "Server URL [${placeholder}]: " entered_base_url; then
+    entered_base_url="$placeholder"
   fi
 
   entered_base_url="${entered_base_url:-$placeholder}"
   entered_base_url="${entered_base_url%/}"
+  entered_base_url="$(trim_whitespace "$entered_base_url")"
 
-  local username_placeholder="${entered_username:-}"
-  if [[ "$has_prompt_tty" -eq 1 ]]; then
-    while true; do
-      if ! read -r -u "$prompt_fd" -p "Username${username_placeholder:+ [${username_placeholder}]}: " entered_username; then
-        entered_username="$username_placeholder"
-      fi
-
-      entered_username="${entered_username:-$username_placeholder}"
-      entered_username_trimmed="$(trim_whitespace "$entered_username")"
-      if [[ -n "$entered_username_trimmed" ]]; then
-        entered_username="$entered_username_trimmed"
-        break
-      fi
-
-      echo "Username cannot be blank."
-      username_placeholder=""
-    done
-  else
-    if ! IFS= read -r entered_username; then
+  local username_placeholder="${existing_username:-}"
+  while true; do
+    if ! read -r -u "$prompt_fd" -p "Username${username_placeholder:+ [${username_placeholder}]}: " entered_username; then
       entered_username="$username_placeholder"
     fi
+
     entered_username="${entered_username:-$username_placeholder}"
-    entered_username_trimmed="$(trim_whitespace "${entered_username:-}")"
-    if [[ -z "$entered_username_trimmed" ]]; then
-      echo "No interactive terminal detected and no existing username found."
-      echo "Please run install again in an interactive terminal."
-      exit 1
+    entered_username_trimmed="$(trim_whitespace "$entered_username")"
+    if [[ -n "$entered_username_trimmed" ]]; then
+      entered_username="$entered_username_trimmed"
+      break
     fi
-    entered_username="$entered_username_trimmed"
-  fi
+
+    echo "Username cannot be blank."
+    username_placeholder=""
+  done
+
+  entered_username_trimmed="$(trim_whitespace "${entered_username:-}")"
+  entered_username="$entered_username_trimmed"
 
   if [[ "$prompt_fd" -eq 3 ]]; then
     exec 3<&-

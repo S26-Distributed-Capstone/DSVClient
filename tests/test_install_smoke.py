@@ -12,7 +12,42 @@ class InstallSmokeTest(unittest.TestCase):
     def setUpClass(cls):
         cls.repo_root = Path(__file__).resolve().parents[1]
 
-    def test_install_script_runs_with_mocked_curl(self):
+    def test_install_fails_without_interactive_terminal_even_with_existing_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            home_dir = root / "home"
+            fake_bin = root / "fake-bin"
+            home_dir.mkdir(parents=True, exist_ok=True)
+            fake_bin.mkdir(parents=True, exist_ok=True)
+
+            self._create_mock_curl(fake_bin / "curl")
+
+            env = os.environ.copy()
+            env["HOME"] = str(home_dir)
+            env["USERPROFILE"] = str(home_dir)
+            env["DSVC_TEST_REPO_ROOT"] = str(self.repo_root)
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            config_file = home_dir / ".dsv_client" / "config.json"
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file.write_text(
+                json.dumps({"base_url": "http://127.0.0.1:8080", "username": "test-user"}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                ["bash", "scripts/install.sh"],
+                cwd=self.repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(0, result.returncode, msg=result.stderr or result.stdout)
+            self.assertIn("No interactive terminal detected.", result.stdout)
+            self.assertIn("Please run install again in an interactive terminal.", result.stdout)
+
+    def test_install_fails_without_interactive_terminal_no_existing_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             home_dir = root / "home"
@@ -33,29 +68,13 @@ class InstallSmokeTest(unittest.TestCase):
                 cwd=self.repo_root,
                 env=env,
                 text=True,
-                input="http://127.0.0.1:8080\ntest-user\n",
                 capture_output=True,
                 check=False,
             )
 
-            self.assertEqual(0, result.returncode, msg=result.stderr or result.stdout)
-            self.assertIn("Installed dsvc to", result.stdout)
-
-            install_line = next(
-                (line for line in result.stdout.splitlines() if line.startswith("Installed dsvc to ")),
-                "",
-            )
-            self.assertTrue(install_line, "Expected installer to print final install location.")
-            launcher_path = install_line.removeprefix("Installed dsvc to ").strip()
-            launcher = Path(launcher_path)
-            config_file = home_dir / ".dsv_client" / "config.json"
-            self.assertTrue(launcher.exists(), "Expected dsvc launcher symlink to exist.")
-            self.assertTrue(config_file.exists(), "Expected config.json to be created.")
-
-            with open(config_file, "r", encoding="utf-8") as fh:
-                config = json.load(fh)
-            self.assertEqual("http://127.0.0.1:8080", config.get("base_url"))
-            self.assertEqual("test-user", config.get("username"))
+            self.assertNotEqual(0, result.returncode, msg=result.stderr or result.stdout)
+            self.assertIn("No interactive terminal detected.", result.stdout)
+            self.assertIn("Please run install again in an interactive terminal.", result.stdout)
 
     @staticmethod
     def _create_mock_curl(path: Path) -> None:
