@@ -4,20 +4,15 @@ set -euo pipefail
 RUNTIME_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/dsvc"
 RUNTIME_BIN_DIR="$RUNTIME_ROOT/bin"
 DEFAULT_USER_BIN="$HOME/.local/bin"
-CONFIG_FILE="$HOME/.dsv_client/config.json"
+CONFIG_DIR="$HOME/.dsv_client"
+CONFIG_FILE="$CONFIG_DIR/config.json"
 
 remove_launchers() {
-  local -a candidates=()
+  local -a candidates=("/usr/local/bin/dsvc" "${DEFAULT_USER_BIN}/dsvc")
   local candidate=""
   local target=""
   local removed_count=0
   local found_count=0
-
-  if [[ -n "${DSVC_BIN_DIR:-}" ]]; then
-    candidates+=("${DSVC_BIN_DIR}/dsvc")
-  else
-    candidates+=("/usr/local/bin/dsvc" "${DEFAULT_USER_BIN}/dsvc")
-  fi
 
   for candidate in "${candidates[@]}"; do
     if [[ -L "$candidate" ]]; then
@@ -44,43 +39,19 @@ remove_launchers() {
   fi
 }
 
-maybe_remove_config() {
-  local remove_config=""
-
+remove_config() {
   if [[ ! -f "$CONFIG_FILE" ]]; then
-    return 0
+    echo "Config file not found: $CONFIG_FILE"
+    return
   fi
+  rm -f "$CONFIG_FILE"
+  echo "Removed config file: $CONFIG_FILE"
+}
 
-  case "${DSVC_REMOVE_CONFIG:-}" in
-    true|TRUE|1|yes|YES|y|Y)
-      rm -f "$CONFIG_FILE"
-      echo "Removed config file."
-      return 0
-      ;;
-    false|FALSE|0|no|NO|n|N)
-      echo "Config file kept."
-      return 0
-      ;;
-  esac
-
-  if [[ -t 0 ]]; then
-    if ! read -r -p "Remove config file at $CONFIG_FILE? [y/N]: " remove_config; then
-      remove_config=""
-    fi
-  else
-    echo "No interactive terminal detected. Keeping config file."
-    return 0
+remove_config_dir_if_empty() {
+  if [[ -d "$CONFIG_DIR" ]]; then
+    rmdir "$CONFIG_DIR" 2>/dev/null || true
   fi
-
-  case "$remove_config" in
-    y|Y|yes|YES)
-      rm -f "$CONFIG_FILE"
-      echo "Removed config file."
-      ;;
-    *)
-      echo "Config file kept."
-      ;;
-  esac
 }
 
 main() {
@@ -93,7 +64,8 @@ main() {
     echo "Runtime directory not found: $RUNTIME_ROOT"
   fi
 
-  maybe_remove_config
+  remove_config
+  remove_config_dir_if_empty
 }
 
 main "$@"

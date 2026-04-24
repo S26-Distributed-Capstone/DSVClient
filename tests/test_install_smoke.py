@@ -41,7 +41,13 @@ class InstallSmokeTest(unittest.TestCase):
             self.assertEqual(0, result.returncode, msg=result.stderr or result.stdout)
             self.assertIn("Installed dsvc to", result.stdout)
 
-            launcher = home_dir / ".local" / "bin" / "dsvc"
+            install_line = next(
+                (line for line in result.stdout.splitlines() if line.startswith("Installed dsvc to ")),
+                "",
+            )
+            self.assertTrue(install_line, "Expected installer to print final install location.")
+            launcher_path = install_line.removeprefix("Installed dsvc to ").strip()
+            launcher = Path(launcher_path)
             config_file = home_dir / ".dsv_client" / "config.json"
             self.assertTrue(launcher.exists(), "Expected dsvc launcher symlink to exist.")
             self.assertTrue(config_file.exists(), "Expected config.json to be created.")

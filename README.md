@@ -148,4 +148,4 @@ The uninstall script removes:
 
 - `dsvc` launcher symlink
 - Installed runtime directory
-- Optional client config (prompted)
+- Client config file (`~/.dsv_client/config.json`)
