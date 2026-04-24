@@ -1,11 +1,10 @@
 """HTTP client for the Distributed Secrets Vault API.
 
 Mirrors the Java Client.java implementation with retry logic for transient
-failures (HTTP 503 / 429) and optional debug logging.
+failures (HTTP 503 / 429).
 """
 
 import json
-import sys
 import time
 import urllib.error
 import urllib.parse
@@ -39,30 +38,12 @@ class Client:
     READ_TIMEOUT_SECONDS = 5.0
     MAX_RETRIES = 2
     RETRY_DELAY_SECONDS = 0.2
-    DEBUG_HTTP = False
-
     def __init__(self, config: dict):
         self._base_url = config.get("base_url", "http://localhost:8080").rstrip("/")
         self._connect_timeout = self.CONNECT_TIMEOUT_SECONDS
         self._read_timeout = self.READ_TIMEOUT_SECONDS
         self._max_retries = self.MAX_RETRIES
         self._retry_delay = self.RETRY_DELAY_SECONDS
-        self._debug_http = self.DEBUG_HTTP
-        self._last_status_code = 0
-        self._last_reason = ""
-        self._last_body = ""
-
-    @property
-    def last_status_code(self) -> int:
-        return self._last_status_code
-
-    @property
-    def last_reason(self) -> str:
-        return self._last_reason
-
-    @property
-    def last_body(self) -> str:
-        return self._last_body
 
     # ------------------------------------------------------------------
     # Public API
@@ -116,36 +97,17 @@ class Client:
     def _send(
         self, method: str, path: str, body: Optional[str], expected_status: int
     ) -> str:
-        started_at_ms = int(time.time() * 1000)
         safe_path = path.split("?")[0]  # omit query params (may contain auth keys)
-        self._debug(
-            f"Sending {method} {safe_path} "
-            f"(connect_timeout={self._connect_timeout}, read_timeout={self._read_timeout}, "
-            f"max_retries={self._max_retries})"
-        )
         max_attempts = self._max_retries + 1
 
         for attempt in range(1, max_attempts + 1):
-            self._debug(f"HTTP attempt {attempt} of {max_attempts}")
             try:
                 status_code, reason, response_body = self._do_request(method, path, body)
                 normalized_reason = self._normalize_reason(status_code, reason)
-                self._last_status_code = status_code
-                self._last_reason = normalized_reason
-                self._last_body = response_body or ""
 
                 if status_code in (503, 429) and attempt < max_attempts:
-                    self._debug(
-                        f"Retryable status {status_code} received; sleeping "
-                        f"{self._retry_delay}s before retry"
-                    )
                     time.sleep(self._retry_delay)
                     continue
-
-                elapsed_ms = int(time.time() * 1000) - started_at_ms
-                self._debug(
-                    f"Received {status_code} for {method} {safe_path} in {elapsed_ms} ms"
-                )
 
                 if status_code != expected_status:
                     raise ClientException(
@@ -159,7 +121,6 @@ class Client:
                 return response_body or ""
 
             except OSError as exc:
-                self._debug(f"Attempt {attempt} failed with OSError: {exc}")
                 if attempt >= max_attempts:
                     raise ClientException(
                         "Gateway request failed after retries", cause=exc
@@ -186,10 +147,6 @@ class Client:
                 return resp.status, str(getattr(resp, "reason", "") or ""), resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             return exc.code, str(getattr(exc, "reason", "") or ""), exc.read().decode("utf-8")
-
-    def _debug(self, message: str) -> None:
-        if self._debug_http:
-            print(f"[dsv-client-debug] {message}", file=sys.stderr)
 
     @staticmethod
     def _normalize_reason(status_code: int, reason: str) -> str:

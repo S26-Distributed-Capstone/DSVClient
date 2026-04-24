@@ -1,8 +1,4 @@
-"""Configuration management for the DSV Client.
-
-Settings are persisted in ~/.dsv_client/config.json so that the user is
-prompted once for the server URL instead of re-entering it every session.
-"""
+"""Configuration management for the DSV Client."""
 
 import json
 from pathlib import Path
@@ -44,25 +40,3 @@ def is_configured(config: dict) -> bool:
 def is_logged_in(config: dict) -> bool:
     """Return True when a non-blank username has been set."""
     return bool(str(config.get("username", "")).strip())
-
-
-def setup_wizard(config: dict) -> dict:
-    """Interactively prompt the user for configuration values and save them.
-
-    Returns the updated config dict.
-    """
-    print("=== DSV Client Setup ===")
-
-    current_url = config.get("base_url", "")
-    placeholder = current_url or "http://localhost:8080"
-    raw = input(f"Server URL [{placeholder}]: ").strip()
-    config["base_url"] = (raw or placeholder).rstrip("/")
-
-    current_user = str(config.get("username", "")).strip()
-    user_placeholder = current_user or "your-username"
-    user_raw = input(f"Username [{user_placeholder}]: ").strip()
-    config["username"] = user_raw or current_user
-
-    save_config(config)
-    print(f"Configuration saved to {CONFIG_FILE}")
-    return config

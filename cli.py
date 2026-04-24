@@ -17,56 +17,71 @@ from typing import Optional
 from client import Client, ClientException
 from config import is_configured, is_logged_in, load_config, save_config
 
+COMMAND_USAGE: dict[str, str] = {
+    "help": "help",
+    "ping": "ping",
+    "login": "login <username>",
+    "logout": "logout",
+    "create": "create <secretName> <secretValue>",
+    "get": "get <secretName>",
+    "update": "update <secretName> <updatedValue>",
+    "delete": "delete <secretName>",
+}
+
+COMMAND_ARGC: dict[str, int] = {
+    "help": 1,
+    "ping": 1,
+    "login": 2,
+    "logout": 1,
+    "create": 3,
+    "get": 2,
+    "update": 3,
+    "delete": 2,
+}
+
+COMMAND_DESCRIPTIONS: dict[str, tuple[str, str]] = {
+    "ping": ("Check server connectivity.", "dsvc ping"),
+    "login": ("Store the username and start a session.", "dsvc login my-user"),
+    "logout": ("Clear the stored username and end the session.", "dsvc logout"),
+    "create": ("Create a secret.", "dsvc create db-password hunter2"),
+    "get": ("Retrieve a secret value.", "dsvc get db-password"),
+    "update": ("Update an existing secret value.", "dsvc update db-password new-value"),
+    "delete": ("Delete a secret.", "dsvc delete db-password"),
+}
+
+NO_LOGIN_REQUIRED = {"help", "login", "logout"}
+
 
 # ---------------------------------------------------------------------------
 # Command runners
 # ---------------------------------------------------------------------------
 
 def _run_ping(client: Client, args: list[str]) -> None:
-    if len(args) != 1:
-        _print_invalid_parameters("ping", "ping")
-        return
     response = client.ping()
     _print_http_response(response)
 
 
 def _run_create(client: Client, args: list[str], username: str) -> None:
-    if len(args) != 3:
-        _print_invalid_parameters("create", "create <secretName> <secretValue>")
-        return
     response = client.create_secret(args[1], args[2], username)
     _print_http_response(response)
 
 
 def _run_get(client: Client, args: list[str], username: str) -> None:
-    if len(args) != 2:
-        _print_invalid_parameters("get", "get <secretName>")
-        return
     response = client.get_secret(args[1], username)
     _print_http_response(response)
 
 
 def _run_update(client: Client, args: list[str], username: str) -> None:
-    if len(args) != 3:
-        _print_invalid_parameters("update", "update <secretName> <updatedValue>")
-        return
     response = client.update_secret(args[1], args[2], username)
     _print_http_response(response)
 
 
 def _run_delete(client: Client, args: list[str], username: str) -> None:
-    if len(args) != 2:
-        _print_invalid_parameters("delete", "delete <secretName>")
-        return
     response = client.delete_secret(args[1], username)
     _print_http_response(response)
 
 
 def _run_login(config: dict, args: list[str]) -> dict:
-    if len(args) != 2:
-        _print_invalid_parameters("login", "login <username>")
-        return config
-
     if is_logged_in(config):
         current_user = str(config.get("username", "")).strip()
         print(f"Already logged in as '{current_user}'.")
@@ -85,10 +100,6 @@ def _run_login(config: dict, args: list[str]) -> dict:
 
 
 def _run_logout(config: dict, args: list[str]) -> dict:
-    if len(args) != 1:
-        _print_invalid_parameters("logout", "logout")
-        return config
-
     if not str(config.get("username", "")).strip():
         print("You are already logged out.")
         return config
@@ -100,7 +111,20 @@ def _run_logout(config: dict, args: list[str]) -> dict:
 
 
 def _requires_login(operation: str) -> bool:
-    return operation not in {"help", "login", "logout"}
+    return operation not in NO_LOGIN_REQUIRED
+
+
+def _validate_command_arguments(args: list[str]) -> bool:
+    if not args:
+        return False
+    command = args[0].lower()
+    expected_count = COMMAND_ARGC.get(command)
+    if expected_count is None:
+        return True
+    if len(args) == expected_count:
+        return True
+    _print_invalid_parameters(command, COMMAND_USAGE[command])
+    return False
 
 
 def _print_missing_server_configuration() -> None:
@@ -113,10 +137,23 @@ def _run_command(client: Optional[Client], config: dict, args: list[str]) -> dic
         return config
     operation = args[0].lower()
 
+    if operation == "help":
+        if not _validate_command_arguments(args):
+            return config
+        _print_usage()
+        return config
+
     if operation == "login":
+        if not _validate_command_arguments(args):
+            return config
         return _run_login(config, args)
     if operation == "logout":
+        if not _validate_command_arguments(args):
+            return config
         return _run_logout(config, args)
+
+    if not _validate_command_arguments(args):
+        return config
 
     if _requires_login(operation) and not is_logged_in(config):
         print("Please log in first: dsvc login <username>")
@@ -159,34 +196,12 @@ def _print_usage() -> None:
     print("  dsvc <command> [arguments]")
     print()
     print("Commands:")
-    print("  ping")
-    print("      Check server connectivity.")
-    print("      Example: dsvc ping")
-    print()
-    print("  login <username>")
-    print("      Store the username and start a session.")
-    print("      Example: dsvc login my-user")
-    print()
-    print("  logout")
-    print("      Clear the stored username and end the session.")
-    print("      Example: dsvc logout")
-    print()
-    print("  create <secretName> <secretValue>")
-    print("      Create a secret.")
-    print("      Example: dsvc create db-password hunter2")
-    print()
-    print("  get <secretName>")
-    print("      Retrieve a secret value.")
-    print("      Example: dsvc get db-password")
-    print()
-    print("  update <secretName> <updatedValue>")
-    print("      Update an existing secret value.")
-    print("      Example: dsvc update db-password new-value")
-    print()
-    print("  delete <secretName>")
-    print("      Delete a secret.")
-    print("      Example: dsvc delete db-password")
-    print()
+    for command in ("ping", "login", "logout", "create", "get", "update", "delete"):
+        description, example = COMMAND_DESCRIPTIONS[command]
+        print(f"  {COMMAND_USAGE[command]}")
+        print(f"      {description}")
+        print(f"      Example: {example}")
+        print()
     print("Batch mode:")
     print("  dsvc --script <file>")
     print("      Run commands from a file, one command per line.")
@@ -293,10 +308,6 @@ def _run_script(script_file: str) -> None:
         if not line or line.startswith("#"):
             continue
 
-        if line.lower() == "help":
-            _print_usage()
-            continue
-
         args = _parse_line(line)
         if not args:
             continue
@@ -347,13 +358,9 @@ def main() -> None:
         _print_usage()
         return
 
-    operation = parsed.command[0].lower()
-    if operation == "help":
-        _print_usage()
-        return
-
     config = load_config()
     client: Optional[Client] = None
+    operation = parsed.command[0].lower()
     if _requires_login(operation):
         if not is_configured(config):
             _print_missing_server_configuration()
