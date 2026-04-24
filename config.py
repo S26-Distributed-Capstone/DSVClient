@@ -12,11 +12,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG: dict = {
     "base_url": "",
-    "connect_timeout": 3.0,
-    "read_timeout": 5.0,
-    "max_retries": 2,
-    "retry_delay": 0.2,
-    "debug_http": False,
+    "username": "",
 }
 
 def load_config() -> dict:
@@ -45,6 +41,11 @@ def is_configured(config: dict) -> bool:
     return bool(config.get("base_url", "").strip())
 
 
+def is_logged_in(config: dict) -> bool:
+    """Return True when a non-blank username has been set."""
+    return bool(str(config.get("username", "")).strip())
+
+
 def setup_wizard(config: dict) -> dict:
     """Interactively prompt the user for configuration values and save them.
 
@@ -56,6 +57,11 @@ def setup_wizard(config: dict) -> dict:
     placeholder = current_url or "http://localhost:8080"
     raw = input(f"Server URL [{placeholder}]: ").strip()
     config["base_url"] = (raw or placeholder).rstrip("/")
+
+    current_user = str(config.get("username", "")).strip()
+    user_placeholder = current_user or "your-username"
+    user_raw = input(f"Username [{user_placeholder}]: ").strip()
+    config["username"] = user_raw or current_user
 
     save_config(config)
     print(f"Configuration saved to {CONFIG_FILE}")

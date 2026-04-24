@@ -35,14 +35,19 @@ class ClientException(Exception):
 class Client:
     SECRETS_PATH = "/api/v1/secrets"
     HEALTH_PATH = "/health"
+    CONNECT_TIMEOUT_SECONDS = 3.0
+    READ_TIMEOUT_SECONDS = 5.0
+    MAX_RETRIES = 2
+    RETRY_DELAY_SECONDS = 0.2
+    DEBUG_HTTP = False
 
     def __init__(self, config: dict):
         self._base_url = config.get("base_url", "http://localhost:8080").rstrip("/")
-        self._connect_timeout = float(config.get("connect_timeout", 3.0))
-        self._read_timeout = float(config.get("read_timeout", 5.0))
-        self._max_retries = int(config.get("max_retries", 2))
-        self._retry_delay = float(config.get("retry_delay", 0.2))
-        self._debug_http = self._is_debug_http_enabled(config)
+        self._connect_timeout = self.CONNECT_TIMEOUT_SECONDS
+        self._read_timeout = self.READ_TIMEOUT_SECONDS
+        self._max_retries = self.MAX_RETRIES
+        self._retry_delay = self.RETRY_DELAY_SECONDS
+        self._debug_http = self.DEBUG_HTTP
         self._last_status_code = 0
         self._last_reason = ""
         self._last_body = ""
@@ -195,11 +200,3 @@ class Client:
         except ValueError:
             return ""
 
-    @staticmethod
-    def _is_debug_http_enabled(config: dict) -> bool:
-        value = config.get("debug_http", False)
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() == "true"
-        return bool(value)

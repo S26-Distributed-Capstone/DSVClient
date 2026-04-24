@@ -4,7 +4,8 @@
 Examples::
 
     dsvc ping
-    dsvc create my-secret value authKey
+    dsvc login my-user
+    dsvc create my-secret value
     dsvc --script commands.txt
 """
 
@@ -14,7 +15,7 @@ import sys
 from typing import Optional
 
 from client import Client, ClientException
-from config import load_config
+from config import is_configured, is_logged_in, load_config, save_config
 
 
 # ---------------------------------------------------------------------------
@@ -29,63 +30,122 @@ def _run_ping(client: Client, args: list[str]) -> None:
     _print_http_response(response)
 
 
-def _run_create(client: Client, args: list[str]) -> None:
-    if len(args) != 4:
-        _print_invalid_parameters(
-            "create", "create <secretName> <secretValue> <authKey>"
-        )
-        return
-    response = client.create_secret(args[1], args[2], args[3])
-    _print_http_response(response)
-
-
-def _run_get(client: Client, args: list[str]) -> None:
+def _run_create(client: Client, args: list[str], username: str) -> None:
     if len(args) != 3:
-        _print_invalid_parameters("get", "get <secretName> <authKey>")
+        _print_invalid_parameters("create", "create <secretName> <secretValue>")
         return
-    response = client.get_secret(args[1], args[2])
+    response = client.create_secret(args[1], args[2], username)
     _print_http_response(response)
 
 
-def _run_update(client: Client, args: list[str]) -> None:
-    if len(args) != 4:
-        _print_invalid_parameters(
-            "update", "update <secretName> <updatedValue> <authKey>"
-        )
+def _run_get(client: Client, args: list[str], username: str) -> None:
+    if len(args) != 2:
+        _print_invalid_parameters("get", "get <secretName>")
         return
-    response = client.update_secret(args[1], args[2], args[3])
+    response = client.get_secret(args[1], username)
     _print_http_response(response)
 
 
-def _run_delete(client: Client, args: list[str]) -> None:
+def _run_update(client: Client, args: list[str], username: str) -> None:
     if len(args) != 3:
-        _print_invalid_parameters("delete", "delete <secretName> <authKey>")
+        _print_invalid_parameters("update", "update <secretName> <updatedValue>")
         return
-    response = client.delete_secret(args[1], args[2])
+    response = client.update_secret(args[1], args[2], username)
     _print_http_response(response)
 
 
-def _run_command(client: Client, args: list[str]) -> None:
+def _run_delete(client: Client, args: list[str], username: str) -> None:
+    if len(args) != 2:
+        _print_invalid_parameters("delete", "delete <secretName>")
+        return
+    response = client.delete_secret(args[1], username)
+    _print_http_response(response)
+
+
+def _run_login(config: dict, args: list[str]) -> dict:
+    if len(args) != 2:
+        _print_invalid_parameters("login", "login <username>")
+        return config
+
+    if is_logged_in(config):
+        current_user = str(config.get("username", "")).strip()
+        print(f"Already logged in as '{current_user}'.")
+        print("Please run 'dsvc logout' before logging in again.")
+        return config
+
+    username = args[1].strip()
+    if not username:
+        print("Username cannot be empty.")
+        return config
+
+    config["username"] = username
+    save_config(config)
+    print(f"Logged in as '{username}'.")
+    return config
+
+
+def _run_logout(config: dict, args: list[str]) -> dict:
+    if len(args) != 1:
+        _print_invalid_parameters("logout", "logout")
+        return config
+
+    if not str(config.get("username", "")).strip():
+        print("You are already logged out.")
+        return config
+
+    config["username"] = ""
+    save_config(config)
+    print("Logged out.")
+    return config
+
+
+def _requires_login(operation: str) -> bool:
+    return operation not in {"help", "login", "logout"}
+
+
+def _print_missing_server_configuration() -> None:
+    print("Server URL is not configured.")
+    print("Set 'base_url' in ~/.dsv_client/config.json or run the installer setup again.")
+
+
+def _run_command(client: Optional[Client], config: dict, args: list[str]) -> dict:
     if not args:
-        return
+        return config
     operation = args[0].lower()
+
+    if operation == "login":
+        return _run_login(config, args)
+    if operation == "logout":
+        return _run_logout(config, args)
+
+    if _requires_login(operation) and not is_logged_in(config):
+        print("Please log in first: dsvc login <username>")
+        return config
+
+    username = str(config.get("username", "")).strip()
+
+    if client is None:
+        print("Internal error: client is required for this command.")
+        return config
+
     try:
         match operation:
             case "ping":
                 _run_ping(client, args)
             case "create":
-                _run_create(client, args)
+                _run_create(client, args, username)
             case "get":
-                _run_get(client, args)
+                _run_get(client, args, username)
             case "update":
-                _run_update(client, args)
+                _run_update(client, args, username)
             case "delete":
-                _run_delete(client, args)
+                _run_delete(client, args, username)
             case _:
                 print(f"Unknown command: {args[0]}")
                 print("Type 'help' to print commands.")
     except ClientException as exc:
         _print_request_failure(exc)
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -93,13 +153,48 @@ def _run_command(client: Client, args: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 def _print_usage() -> None:
-    print("Usage:")
-    print("  dsvc ping")
-    print("  dsvc create <secretName> <secretValue> <authKey>")
-    print("  dsvc get <secretName> <authKey>")
-    print("  dsvc update <secretName> <updatedValue> <authKey>")
-    print("  dsvc delete <secretName> <authKey>")
+    print("DSV Client usage")
+    print()
+    print("Run one command at a time:")
+    print("  dsvc <command> [arguments]")
+    print()
+    print("Commands:")
+    print("  ping")
+    print("      Check server connectivity.")
+    print("      Example: dsvc ping")
+    print()
+    print("  login <username>")
+    print("      Store the username and start a session.")
+    print("      Example: dsvc login my-user")
+    print()
+    print("  logout")
+    print("      Clear the stored username and end the session.")
+    print("      Example: dsvc logout")
+    print()
+    print("  create <secretName> <secretValue>")
+    print("      Create a secret.")
+    print("      Example: dsvc create db-password hunter2")
+    print()
+    print("  get <secretName>")
+    print("      Retrieve a secret value.")
+    print("      Example: dsvc get db-password")
+    print()
+    print("  update <secretName> <updatedValue>")
+    print("      Update an existing secret value.")
+    print("      Example: dsvc update db-password new-value")
+    print()
+    print("  delete <secretName>")
+    print("      Delete a secret.")
+    print("      Example: dsvc delete db-password")
+    print()
+    print("Batch mode:")
     print("  dsvc --script <file>")
+    print("      Run commands from a file, one command per line.")
+    print("      Lines starting with '#' and empty lines are ignored.")
+    print()
+    print("Authentication:")
+    print("  - Run 'dsvc login <username>' before running API commands.")
+    print("  - The username is stored in ~/.dsv_client/config.json.")
 
 
 def _print_invalid_parameters(command: str, expected_usage: str) -> None:
@@ -181,7 +276,7 @@ def _parse_line(line: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _run_script(client: Client, script_file: str) -> None:
+def _run_script(script_file: str) -> None:
     """Execute commands from *script_file*, one per line."""
     try:
         with open(script_file, "r", encoding="utf-8") as fh:
@@ -189,6 +284,9 @@ def _run_script(client: Client, script_file: str) -> None:
     except OSError as exc:
         print(f"Error reading script file: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    config = load_config()
+    client: Optional[Client] = None
 
     for raw_line in lines:
         line = raw_line.strip()
@@ -199,7 +297,21 @@ def _run_script(client: Client, script_file: str) -> None:
             _print_usage()
             continue
 
-        _run_command(client, _parse_line(line))
+        args = _parse_line(line)
+        if not args:
+            continue
+
+        operation = args[0].lower()
+        active_client: Optional[Client] = None
+        if _requires_login(operation):
+            if not is_configured(config):
+                _print_missing_server_configuration()
+                continue
+            if client is None:
+                client = Client(config)
+            active_client = client
+
+        config = _run_command(active_client, config, args)
 
 
 # ---------------------------------------------------------------------------
@@ -218,17 +330,15 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs=argparse.REMAINDER,
-        help="command to execute (ping, create, get, update, delete)",
+        help="command to execute (help, login, logout, ping, create, get, update, delete)",
     )
     parsed = parser.parse_args()
 
     if parsed.script and parsed.command:
         parser.error("command arguments cannot be used together with --script")
 
-    client = Client(load_config())
-
     if parsed.script:
-        _run_script(client, parsed.script)
+        _run_script(parsed.script)
         return
 
     if not parsed.command:
@@ -242,7 +352,14 @@ def main() -> None:
         _print_usage()
         return
 
-    _run_command(client, parsed.command)
+    config = load_config()
+    client: Optional[Client] = None
+    if _requires_login(operation):
+        if not is_configured(config):
+            _print_missing_server_configuration()
+            return
+        client = Client(config)
+    _run_command(client, config, parsed.command)
 
 
 if __name__ == "__main__":

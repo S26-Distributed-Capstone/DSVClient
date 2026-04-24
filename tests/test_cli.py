@@ -122,50 +122,56 @@ class CliTest(unittest.TestCase):
         args: list[str],
         input_text: str = "",
         cleanup_script: bool = False,
+        config_data: dict | None = None,
     ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as temp_home:
             home_dir = Path(temp_home)
-            config_dir = home_dir / ".dsv_client"
-            config_dir.mkdir(parents=True, exist_ok=True)
-
-            with open(config_dir / "config.json", "w", encoding="utf-8") as fh:
-                json.dump(
-                    {
-                        "base_url": self.base_url,
-                        "connect_timeout": 3.0,
-                        "read_timeout": 5.0,
-                        "max_retries": 2,
-                        "retry_delay": 0.001,
-                        "debug_http": False,
-                    },
-                    fh,
-                )
-
-            env = os.environ.copy()
-            env["HOME"] = temp_home
-            env["USERPROFILE"] = temp_home
-
+            self._write_config(
+                home_dir,
+                config_data
+                or {
+                    "base_url": self.base_url,
+                    "username": "test-user",
+                },
+            )
             try:
-                return subprocess.run(
-                    [sys.executable, "cli.py", *args],
-                    cwd=self.repo_root,
-                    env=env,
-                    text=True,
-                    input=input_text,
-                    capture_output=True,
-                    check=False,
-                )
+                return self._run_cli_in_home(home_dir, args, input_text=input_text)
             finally:
                 if cleanup_script and args and args[0] == "--script":
                     os.unlink(args[1])
 
+    def _write_config(self, home_dir: Path, config_data: dict) -> None:
+        config_dir = home_dir / ".dsv_client"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        with open(config_dir / "config.json", "w", encoding="utf-8") as fh:
+            json.dump(config_data, fh)
+
+    def _run_cli_in_home(
+        self,
+        home_dir: Path,
+        args: list[str],
+        input_text: str = "",
+    ) -> subprocess.CompletedProcess[str]:
+        env = os.environ.copy()
+        env["HOME"] = str(home_dir)
+        env["USERPROFILE"] = str(home_dir)
+        return subprocess.run(
+            [sys.executable, "cli.py", *args],
+            cwd=self.repo_root,
+            env=env,
+            text=True,
+            input=input_text,
+            capture_output=True,
+            check=False,
+        )
+
     def test_supports_crud_requests(self):
         result = self._run_cli_script(
             [
-                "create db-password hunter2 auth-key",
-                "get my-secret auth-key",
-                "update name new auth-key",
-                "delete name auth-key",
+                "create db-password hunter2",
+                "get my-secret",
+                "update name new",
+                "delete name",
             ]
         )
 
@@ -176,13 +182,13 @@ class CliTest(unittest.TestCase):
         self.assertIn("(no response body)", result.stdout)
 
     def test_retries_on_503_until_success(self):
-        result = self._run_cli_script(["get flaky auth-key"])
+        result = self._run_cli_script(["get flaky"])
 
         self.assertEqual(0, result.returncode)
         self.assertIn("stable", result.stdout)
 
     def test_includes_server_message_body_in_errors(self):
-        result = self._run_cli_script(["get missing auth-key"])
+        result = self._run_cli_script(["get missing"])
 
         self.assertEqual(0, result.returncode)
         self.assertIn("Secret not found", result.stdout)
@@ -207,6 +213,76 @@ class CliTest(unittest.TestCase):
         result = self._run_cli(["repl"])
         self.assertEqual(0, result.returncode)
         self.assertIn("Unknown command: repl", result.stdout)
+
+    def test_requires_login_for_secret_commands(self):
+        result = self._run_cli(
+            ["get", "my-secret"],
+            config_data={"base_url": self.base_url, "username": ""},
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Please log in first: dsvc login <username>", result.stdout)
+
+    def test_login_logout_and_relogin_flow(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            home_dir = Path(temp_home)
+            self._write_config(home_dir, {"base_url": self.base_url, "username": ""})
+
+            login = self._run_cli_in_home(home_dir, ["login", "alice"])
+            self.assertIn("Logged in as 'alice'.", login.stdout)
+
+            relogin = self._run_cli_in_home(home_dir, ["login", "bob"])
+            self.assertIn("Already logged in as 'alice'.", relogin.stdout)
+            self.assertIn("Please run 'dsvc logout' before logging in again.", relogin.stdout)
+
+            logout = self._run_cli_in_home(home_dir, ["logout"])
+            self.assertIn("Logged out.", logout.stdout)
+
+            login_again = self._run_cli_in_home(home_dir, ["login", "bob"])
+            self.assertIn("Logged in as 'bob'.", login_again.stdout)
+
+    def test_logout_when_already_logged_out(self):
+        result = self._run_cli(
+            ["logout"],
+            config_data={"base_url": self.base_url, "username": ""},
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertIn("You are already logged out.", result.stdout)
+
+    def test_missing_server_configuration_is_reported(self):
+        result = self._run_cli(
+            ["ping"],
+            config_data={"base_url": "", "username": "test-user"},
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Server URL is not configured.", result.stdout)
+
+    def test_invalid_parameter_messages(self):
+        login_result = self._run_cli(["login"])
+        self.assertIn("Invalid parameters for 'login'.", login_result.stdout)
+        self.assertIn("Expected: login <username>", login_result.stdout)
+
+        create_result = self._run_cli(["create", "name"])
+        self.assertIn("Invalid parameters for 'create'.", create_result.stdout)
+        self.assertIn("Expected: create <secretName> <secretValue>", create_result.stdout)
+
+    def test_script_mode_can_login_then_run_commands(self):
+        result = self._run_cli(
+            ["--script", self._build_script(["login alice", "get my-secret"])],
+            cleanup_script=True,
+            config_data={"base_url": self.base_url, "username": ""},
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Logged in as 'alice'.", result.stdout)
+        self.assertIn("retrieved", result.stdout)
+
+    def test_script_mode_rejects_command_without_login(self):
+        result = self._run_cli(
+            ["--script", self._build_script(["get my-secret"])],
+            cleanup_script=True,
+            config_data={"base_url": self.base_url, "username": ""},
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Please log in first: dsvc login <username>", result.stdout)
 
 
 if __name__ == "__main__":
