@@ -280,6 +280,19 @@ class CliTest(unittest.TestCase):
         self.assertIn("Invalid parameters for 'create'.", create_result.stdout)
         self.assertIn("Expected: create <secretName> <secretValue>", create_result.stdout)
 
+    def test_login_rejects_blank_username(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            home_dir = Path(temp_home)
+            self._write_config(home_dir, {"base_url": self.base_url, "username": ""})
+
+            result = self._run_cli_in_home(home_dir, ["login", "   "])
+            self.assertEqual(0, result.returncode)
+            self.assertIn("Username cannot be empty.", result.stdout)
+
+            with open(home_dir / ".dsv_client" / "config.json", "r", encoding="utf-8") as fh:
+                config = json.load(fh)
+            self.assertEqual("", config.get("username"))
+
     def test_script_mode_can_login_then_run_commands(self):
         result = self._run_cli(
             ["--script", self._build_script(["login alice", "get my-secret"])],

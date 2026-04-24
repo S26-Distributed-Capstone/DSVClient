@@ -13,6 +13,10 @@ CONFIG_DIR="$HOME/.dsv_client"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 RAW_BASE_URL="https://raw.githubusercontent.com/S26-Distributed-Capstone/DSVClient/main"
 
+trim_whitespace() {
+  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Error: required command '$1' is not installed." >&2
@@ -34,6 +38,7 @@ configure_client() {
   local default_base_url="http://localhost:8080"
   local entered_base_url=""
   local entered_username=""
+  local entered_username_trimmed=""
 
   if [[ -f "$CONFIG_FILE" ]]; then
     read -r entered_base_url entered_username < <(python3 - <<'PY' "$CONFIG_FILE"
@@ -62,33 +67,46 @@ PY
     if ! read -r -p "Server URL [${placeholder}]: " entered_base_url; then
       entered_base_url="$placeholder"
     fi
-  elif [[ -r /dev/tty ]]; then
-    if ! read -r -p "Server URL [${placeholder}]: " entered_base_url < /dev/tty; then
+  else
+    if ! IFS= read -r entered_base_url; then
+      echo "No interactive terminal detected. Using default server URL: ${placeholder}"
       entered_base_url="$placeholder"
     fi
-  else
-    echo "No interactive terminal detected. Using default server URL: ${placeholder}"
-    entered_base_url="$placeholder"
   fi
 
   entered_base_url="${entered_base_url:-$placeholder}"
   entered_base_url="${entered_base_url%/}"
 
-  local username_placeholder="${entered_username:-your-username}"
+  local username_placeholder="${entered_username:-}"
   if [[ -t 0 ]]; then
-    if ! read -r -p "Username [${username_placeholder}]: " entered_username; then
-      entered_username="$username_placeholder"
-    fi
-  elif [[ -r /dev/tty ]]; then
-    if ! read -r -p "Username [${username_placeholder}]: " entered_username < /dev/tty; then
-      entered_username="$username_placeholder"
-    fi
-  else
-    echo "No interactive terminal detected. Username will not be preconfigured."
-    entered_username="${entered_username:-}"
-  fi
+    while true; do
+      if ! read -r -p "Username${username_placeholder:+ [${username_placeholder}]}: " entered_username; then
+        entered_username="$username_placeholder"
+      fi
 
-  entered_username="${entered_username:-}"
+      entered_username="${entered_username:-$username_placeholder}"
+      entered_username_trimmed="$(trim_whitespace "$entered_username")"
+      if [[ -n "$entered_username_trimmed" ]]; then
+        entered_username="$entered_username_trimmed"
+        break
+      fi
+
+      echo "Username cannot be blank."
+      username_placeholder=""
+    done
+  else
+    if ! IFS= read -r entered_username; then
+      entered_username="$username_placeholder"
+    fi
+    entered_username="${entered_username:-$username_placeholder}"
+    entered_username_trimmed="$(trim_whitespace "${entered_username:-}")"
+    if [[ -z "$entered_username_trimmed" ]]; then
+      echo "No interactive terminal detected and no existing username found."
+      echo "Please run install again in an interactive terminal."
+      exit 1
+    fi
+    entered_username="$entered_username_trimmed"
+  fi
 
   mkdir -p "$CONFIG_DIR"
   python3 - <<'PY' "$CONFIG_FILE" "$entered_base_url" "$entered_username"

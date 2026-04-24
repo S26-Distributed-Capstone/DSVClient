@@ -54,8 +54,8 @@ class InstallSmokeTest(unittest.TestCase):
 
             with open(config_file, "r", encoding="utf-8") as fh:
                 config = json.load(fh)
-            self.assertEqual("http://localhost:8080", config.get("base_url"))
-            self.assertIn(config.get("username"), {"", "your-username"})
+            self.assertEqual("http://127.0.0.1:8080", config.get("base_url"))
+            self.assertEqual("test-user", config.get("username"))
 
     @staticmethod
     def _create_mock_curl(path: Path) -> None:
