@@ -43,6 +43,19 @@ configure_client() {
   local entered_username_trimmed=""
   local prompt_fd=0
   local has_prompt_tty=0
+  local prompt_out="/dev/stderr"
+
+  prompt_and_read() {
+    local prompt="$1"
+    local __resultvar="$2"
+    local value=""
+
+    printf "%s" "$prompt" > "$prompt_out"
+    if ! IFS= read -r -u "$prompt_fd" value; then
+      value=""
+    fi
+    printf -v "$__resultvar" '%s' "$value"
+  }
 
   # When installer is piped (curl | bash), stdin is not interactive.
   # Use the controlling terminal directly if available.
@@ -51,6 +64,7 @@ configure_client() {
   elif [[ -r /dev/tty ]]; then
     if exec 3</dev/tty 2>/dev/null; then
       prompt_fd=3
+      prompt_out="/dev/tty"
       has_prompt_tty=1
     fi
   fi
@@ -87,9 +101,7 @@ PY
     placeholder="$existing_base_url"
   fi
 
-  if ! read -r -u "$prompt_fd" -p "Server URL [${placeholder}]: " entered_base_url; then
-    entered_base_url="$placeholder"
-  fi
+  prompt_and_read "Server URL [${placeholder}]: " entered_base_url
 
   entered_base_url="${entered_base_url:-$placeholder}"
   entered_base_url="${entered_base_url%/}"
@@ -97,9 +109,7 @@ PY
 
   local username_placeholder="${existing_username:-}"
   while true; do
-    if ! read -r -u "$prompt_fd" -p "Username${username_placeholder:+ [${username_placeholder}]}: " entered_username; then
-      entered_username="$username_placeholder"
-    fi
+    prompt_and_read "Username${username_placeholder:+ [${username_placeholder}]}: " entered_username
 
     entered_username="${entered_username:-$username_placeholder}"
     entered_username_trimmed="$(trim_whitespace "$entered_username")"
