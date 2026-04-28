@@ -1,151 +1,131 @@
 # Distributed Secrets Vault Client
 
-`DSVClient` is the command-line client for interacting with the Distributed
-Secrets Vault gateway.
+This `DSVClient` repository is a standalone project that represents the
+external client system in the architecture of the Distributed Secrets Vault
+project. The client is written in Python and runs as a CLI/TUI application.
+
+## What it does
+
+- Connects to the gateway over HTTP.
+- Sends create / get / update / delete requests to `/api/v1/secrets`.
+- Supports retrieving the latest secret value, a specific version, or all versions.
+- Uses per-command `authKey` values for secret operation authentication.
+- Retries retryable failures (`503`, `429`) with a configurable delay.
+- Stores the server URL in `~/.dsv_client/config.json` so
+  you only need to configure once.
+- Accepts a script file of commands for batch / automation use.
 
 ## Requirements
 
-- Python 3.10 or later
-- A running Distributed Secrets Vault server
-- `curl` (for install/uninstall scripts)
+- Python 3.10 or later (no third-party packages required — uses stdlib only).
+- The Distributed Secrets Vault server must already be running.
 
-## Install
+## Project structure
 
-Install directly from GitHub:
+| File | Purpose |
+|------|---------|
+| `cli.py` | Runnable CLI entry point (interactive and script modes). |
+| `client.py` | Reusable HTTP client with the full secrets API. |
+| `config.py` | Config load/save helpers and interactive setup wizard. |
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/S26-Distributed-Capstone/DSVClient/main/scripts/install.sh | bash
-```
+## Setup wizard (optional)
 
-The installer:
+Pass `--setup` (or run `setup` inside interactive mode) to have the wizard ask for:
 
-- Downloads `cli.py`, `client.py`, and `config.py`
-- Installs runtime files into `~/.local/share/dsvc`
-- Installs `dsvc` into `/usr/local/bin` (if writable) or `~/.local/bin`
-- Prompts for initial `base_url` and `username`
-- Writes config to `~/.dsv_client/config.json`
+1. **Server URL** — the base address of the DSV gateway (e.g. `http://localhost:8080`).
 
-If `~/.local/bin` is not on your `PATH`, add:
+If you skip setup, the client still runs using default values.
 
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-## Usage
-
-Run command help:
+## Run CLI (interactive)
 
 ```bash
-dsvc help
+python cli.py
 ```
 
-### Authentication commands
+You will be dropped into an interactive prompt:
+
+```
+dsv-client> ping
+dsv-client> create my-secret value authKey
+dsv-client> get my-secret authKey
+dsv-client> get my-secret authKey 2
+dsv-client> get my-secret authKey all
+dsv-client> update my-secret new-value authKey
+dsv-client> delete my-secret authKey
+dsv-client> help
+dsv-client> exit
+```
+
+Additional commands available in interactive mode:
+
+| Command | Description |
+|---------|-------------|
+| `setup` | Re-run the server-URL / token setup wizard. |
+
+## Run CLI with a script file
+
+Pass `--script <file>` to execute a batch of commands non-interactively.
+Lines starting with `#` and blank lines are ignored.
 
 ```bash
-dsvc login <username>
-dsvc logout
+python cli.py --script commands.txt
 ```
-
-Notes:
-
-- You must be logged in before running API commands.
-- You must run `logout` before logging in as a different user.
-
-### API commands
-
-```bash
-dsvc ping
-dsvc create <secretName> <secretValue>
-dsvc get <secretName>
-dsvc update <secretName> <updatedValue>
-dsvc delete <secretName>
-```
-
-Examples:
-
-```bash
-dsvc login alice
-dsvc ping
-dsvc create db-password hunter2
-dsvc get db-password
-dsvc update db-password new-value
-dsvc delete db-password
-dsvc logout
-```
-
-With no arguments, `dsvc` prints help and exits.
-
-## Batch mode
-
-Use `--script <file>` to run commands from a file:
-
-```bash
-dsvc --script commands.txt
-```
-
-Rules:
-
-- One command per line
-- Blank lines are ignored
-- Lines starting with `#` are ignored
 
 Example `commands.txt`:
 
 ```text
-# start session
-login alice
-
 # health check
 ping
 
 # create a secret
-create db-password hunter2
+create db-password hunter2 myAuthKey
 
 # retrieve it
-get db-password
+get db-password myAuthKey
+
+# retrieve a specific version
+get db-password myAuthKey 2
+
+# retrieve all versions
+get db-password myAuthKey all
 
 # update it
-update db-password new-value
+update db-password new-value myAuthKey
 
 # remove it
-delete db-password
-
-# end session
-logout
+delete db-password myAuthKey
 ```
 
-## Configuration
-
-`~/.dsv_client/config.json` stores:
-
-- `base_url`: gateway base URL
-- `username`: current logged-in username
-
-HTTP timeout, retry, and debug behavior are hardcoded in the client with
-internal defaults.
-
-## Run tests
-
-From the repo root:
+## Run setup wizard explicitly
 
 ```bash
-python3 -m unittest tests/test_cli.py
+python cli.py --setup
 ```
 
-Or discover all tests under `tests/`:
+## Available commands
 
-```bash
-python3 -m unittest discover -s tests -p "test_*.py"
+```
+ping
+create <secretName> <secretValue> <authKey>
+get <secretName> <authKey> [version|all]
+update <secretName> <updatedValue> <authKey>
+delete <secretName> <authKey>
+setup
+help
+exit
 ```
 
-## Uninstall
+All API commands print the response message body returned by the server. For `get`, the optional final argument retrieves a specific version or all versions.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/S26-Distributed-Capstone/DSVClient/main/scripts/uninstall.sh | bash
-```
+## Configuration file
 
-The uninstall script removes:
+`~/.dsv_client/config.json` stores the following keys:
 
-- `dsvc` launcher symlink
-- Installed runtime directory
-- Client config file (`~/.dsv_client/config.json`)
+| Key | Default | Description |
+|-----|---------|-------------|
+| `base_url` | *(prompted)* | Gateway base URL |
+| `connect_timeout` | `3.0` | Connection timeout in seconds |
+| `read_timeout` | `5.0` | Read timeout in seconds |
+| `max_retries` | `2` | Max retry attempts on 503/429 |
+| `retry_delay` | `0.2` | Seconds to wait between retries |
+| `debug_http` | `false` | Print request/response debug lines |

@@ -26,6 +26,14 @@ class MockDsvHandler(BaseHTTPRequestHandler):
             self._respond(200, "retrieved")
             return
 
+        if path == "/api/v1/secrets/my-secret/2":
+            self._respond(200, "version 2")
+            return
+
+        if path == "/api/v1/secrets/my-secret/all":
+            self._respond(200, "[{\"version\":1,\"value\":\"v1\"},{\"version\":2,\"value\":\"v2\"}]")
+            return
+
         if path == "/api/v1/secrets/missing":
             self._respond(404, "Secret not found")
             return
@@ -58,24 +66,16 @@ class MockDsvHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         if self.path == "/api/v1/secrets":
-            body = self._consume_request_body()
-            try:
-                payload = json.loads(body) if body else {}
-            except json.JSONDecodeError:
-                payload = {}
-            if payload.get("deleteName") == "missing-delete":
-                self._respond(404, "Secret not found")
-                return
+            self._consume_request_body()
             self.send_response(204)
             self.end_headers()
             return
         self._respond(405, "method not allowed")
 
-    def _consume_request_body(self) -> str:
+    def _consume_request_body(self):
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length > 0:
-            return self.rfile.read(content_length).decode("utf-8")
-        return ""
+            self.rfile.read(content_length)
 
     def _respond(self, status_code: int, body: str):
         payload = body.encode("utf-8")
@@ -115,71 +115,51 @@ class CliTest(unittest.TestCase):
             type(self).passed_tests += 1
 
     def _run_cli_script(self, commands: list[str]) -> subprocess.CompletedProcess[str]:
-        return self._run_cli(
-            ["--script", self._build_script(commands)],
-            cleanup_script=True,
-        )
-
-    def _build_script(self, commands: list[str]) -> str:
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
-            tmp.write("\n".join(commands) + "\n")
-            return tmp.name
-
-    def _run_cli(
-        self,
-        args: list[str],
-        input_text: str = "",
-        cleanup_script: bool = False,
-        config_data: dict | None = None,
-    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as temp_home:
             home_dir = Path(temp_home)
-            self._write_config(
-                home_dir,
-                config_data
-                or {
-                    "base_url": self.base_url,
-                    "username": "test-user",
-                },
-            )
+            config_dir = home_dir / ".dsv_client"
+            config_dir.mkdir(parents=True, exist_ok=True)
+
+            with open(config_dir / "config.json", "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "base_url": self.base_url,
+                        "connect_timeout": 3.0,
+                        "read_timeout": 5.0,
+                        "max_retries": 2,
+                        "retry_delay": 0.001,
+                        "debug_http": False,
+                    },
+                    fh,
+                )
+
+            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
+                tmp.write("\n".join(commands) + "\n")
+                script_path = tmp.name
+
+            env = os.environ.copy()
+            env["HOME"] = temp_home
+            env["USERPROFILE"] = temp_home
+
             try:
-                return self._run_cli_in_home(home_dir, args, input_text=input_text)
+                return subprocess.run(
+                    [sys.executable, "cli.py", "--script", script_path],
+                    cwd=self.repo_root,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
             finally:
-                if cleanup_script and args and args[0] == "--script":
-                    os.unlink(args[1])
-
-    def _write_config(self, home_dir: Path, config_data: dict) -> None:
-        config_dir = home_dir / ".dsv_client"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        with open(config_dir / "config.json", "w", encoding="utf-8") as fh:
-            json.dump(config_data, fh)
-
-    def _run_cli_in_home(
-        self,
-        home_dir: Path,
-        args: list[str],
-        input_text: str = "",
-    ) -> subprocess.CompletedProcess[str]:
-        env = os.environ.copy()
-        env["HOME"] = str(home_dir)
-        env["USERPROFILE"] = str(home_dir)
-        return subprocess.run(
-            [sys.executable, "cli.py", *args],
-            cwd=self.repo_root,
-            env=env,
-            text=True,
-            input=input_text,
-            capture_output=True,
-            check=False,
-        )
+                os.unlink(script_path)
 
     def test_supports_crud_requests(self):
         result = self._run_cli_script(
             [
-                "create db-password hunter2",
-                "get my-secret",
-                "update name new",
-                "delete name",
+                "create db-password hunter2 auth-key",
+                "get my-secret auth-key",
+                "update name new auth-key",
+                "delete name auth-key",
             ]
         )
 
@@ -187,23 +167,28 @@ class CliTest(unittest.TestCase):
         self.assertIn("created", result.stdout)
         self.assertIn("retrieved", result.stdout)
         self.assertIn("updated", result.stdout)
-        self.assertIn("Delete succeeded (HTTP 204 No Content).", result.stdout)
+        self.assertIn("(no response body)", result.stdout)
 
-    def test_delete_reports_error_status(self):
-        result = self._run_cli_script(["delete missing-delete"])
+    def test_supports_versioned_and_all_version_get_requests(self):
+        result = self._run_cli_script(
+            [
+                "get my-secret auth-key 2",
+                "get my-secret auth-key all",
+            ]
+        )
 
         self.assertEqual(0, result.returncode)
-        self.assertIn("Delete failed (HTTP 404 Not Found).", result.stdout)
-        self.assertIn("Secret not found", result.stdout)
+        self.assertIn("version 2", result.stdout)
+        self.assertIn('[{"version":1,"value":"v1"},{"version":2,"value":"v2"}]', result.stdout)
 
     def test_retries_on_503_until_success(self):
-        result = self._run_cli_script(["get flaky"])
+        result = self._run_cli_script(["get flaky auth-key"])
 
         self.assertEqual(0, result.returncode)
         self.assertIn("stable", result.stdout)
 
     def test_includes_server_message_body_in_errors(self):
-        result = self._run_cli_script(["get missing"])
+        result = self._run_cli_script(["get missing auth-key"])
 
         self.assertEqual(0, result.returncode)
         self.assertIn("Secret not found", result.stdout)
@@ -212,105 +197,10 @@ class CliTest(unittest.TestCase):
         self.assertNotIn("HTTP 404", result.stdout)
 
     def test_ping_returns_health_status(self):
-        result = self._run_cli(["ping"])
+        result = self._run_cli_script(["ping"])
 
         self.assertEqual(0, result.returncode)
         self.assertIn("OK", result.stdout)
-
-    def test_no_args_prints_help_and_exits(self):
-        result = self._run_cli([])
-
-        self.assertEqual(0, result.returncode)
-        self.assertIn("usage:", result.stdout)
-        self.assertIn("dsvc --script <file>", result.stdout)
-
-    def test_repl_command_is_rejected(self):
-        result = self._run_cli(["repl"])
-        self.assertEqual(0, result.returncode)
-        self.assertIn("Unknown command: repl", result.stdout)
-
-    def test_requires_login_for_secret_commands(self):
-        result = self._run_cli(
-            ["get", "my-secret"],
-            config_data={"base_url": self.base_url, "username": ""},
-        )
-        self.assertEqual(0, result.returncode)
-        self.assertIn("Please log in first: dsvc login <username>", result.stdout)
-
-    def test_login_logout_and_relogin_flow(self):
-        with tempfile.TemporaryDirectory() as temp_home:
-            home_dir = Path(temp_home)
-            self._write_config(home_dir, {"base_url": self.base_url, "username": ""})
-
-            login = self._run_cli_in_home(home_dir, ["login", "alice"])
-            self.assertIn("Logged in as 'alice'.", login.stdout)
-
-            relogin = self._run_cli_in_home(home_dir, ["login", "bob"])
-            self.assertIn("Already logged in as 'alice'.", relogin.stdout)
-            self.assertIn("Please run 'dsvc logout' before logging in again.", relogin.stdout)
-
-            logout = self._run_cli_in_home(home_dir, ["logout"])
-            self.assertIn("Logged out.", logout.stdout)
-
-            login_again = self._run_cli_in_home(home_dir, ["login", "bob"])
-            self.assertIn("Logged in as 'bob'.", login_again.stdout)
-
-    def test_logout_when_already_logged_out(self):
-        result = self._run_cli(
-            ["logout"],
-            config_data={"base_url": self.base_url, "username": ""},
-        )
-        self.assertEqual(0, result.returncode)
-        self.assertIn("You are already logged out.", result.stdout)
-
-    def test_missing_server_configuration_is_reported(self):
-        result = self._run_cli(
-            ["ping"],
-            config_data={"base_url": "", "username": "test-user"},
-        )
-        self.assertEqual(0, result.returncode)
-        self.assertIn("Server URL is not configured.", result.stdout)
-
-    def test_invalid_parameter_messages(self):
-        login_result = self._run_cli(["login"])
-        self.assertIn("Invalid parameters for 'login'.", login_result.stdout)
-        self.assertIn("Expected: login <username>", login_result.stdout)
-
-        create_result = self._run_cli(["create", "name"])
-        self.assertIn("Invalid parameters for 'create'.", create_result.stdout)
-        self.assertIn("Expected: create <secretName> <secretValue>", create_result.stdout)
-
-    def test_login_rejects_blank_username(self):
-        with tempfile.TemporaryDirectory() as temp_home:
-            home_dir = Path(temp_home)
-            self._write_config(home_dir, {"base_url": self.base_url, "username": ""})
-
-            result = self._run_cli_in_home(home_dir, ["login", "   "])
-            self.assertEqual(0, result.returncode)
-            self.assertIn("Username cannot be empty.", result.stdout)
-
-            with open(home_dir / ".dsv_client" / "config.json", "r", encoding="utf-8") as fh:
-                config = json.load(fh)
-            self.assertEqual("", config.get("username"))
-
-    def test_script_mode_can_login_then_run_commands(self):
-        result = self._run_cli(
-            ["--script", self._build_script(["login alice", "get my-secret"])],
-            cleanup_script=True,
-            config_data={"base_url": self.base_url, "username": ""},
-        )
-        self.assertEqual(0, result.returncode)
-        self.assertIn("Logged in as 'alice'.", result.stdout)
-        self.assertIn("retrieved", result.stdout)
-
-    def test_script_mode_rejects_command_without_login(self):
-        result = self._run_cli(
-            ["--script", self._build_script(["get my-secret"])],
-            cleanup_script=True,
-            config_data={"base_url": self.base_url, "username": ""},
-        )
-        self.assertEqual(0, result.returncode)
-        self.assertIn("Please log in first: dsvc login <username>", result.stdout)
 
 
 if __name__ == "__main__":
