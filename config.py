@@ -40,3 +40,32 @@ def is_configured(config: dict) -> bool:
 def is_logged_in(config: dict) -> bool:
     """Return True when a non-blank username has been set."""
     return bool(str(config.get("username", "")).strip())
+
+
+def setup_wizard(config: dict) -> dict:
+    """Interactively configure the DSV client settings."""
+    print("\n=== DSV Client Setup Wizard ===")
+
+    # Get base URL
+    current_url = config.get("base_url", "")
+    url_prompt = f"Base URL [{current_url}]: " if current_url else "Base URL: "
+    base_url = input(url_prompt).strip()
+    if not base_url:
+        base_url = current_url
+
+    # Get username
+    current_user = config.get("username", "")
+    user_prompt = f"Username [{current_user}]: " if current_user else "Username: "
+    username = input(user_prompt).strip()
+    if not username:
+        username = current_user
+
+    # Update config
+    config["base_url"] = base_url
+    config["username"] = username
+
+    # Save configuration
+    save_config(config)
+    print("Configuration saved.\n")
+
+    return config
