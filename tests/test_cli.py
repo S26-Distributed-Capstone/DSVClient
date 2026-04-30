@@ -232,7 +232,7 @@ class CliTest(unittest.TestCase):
         result = self._run_cli([])
 
         self.assertEqual(0, result.returncode)
-        self.assertIn("usage:", result.stdout)
+        self.assertIn("DSV Client usage", result.stdout)
         self.assertIn("dsvc --script <file>", result.stdout)
 
     def test_repl_command_is_rejected(self):
