@@ -57,6 +57,8 @@ Notes:
 dsvc ping
 dsvc create <secretName> <secretValue>
 dsvc get <secretName>
+dsvc get <secretName> --all
+dsvc get <secretName> --version <versionNumber>
 dsvc update <secretName> <updatedValue>
 dsvc delete <secretName>
 ```
@@ -68,9 +70,32 @@ dsvc login alice
 dsvc ping
 dsvc create db-password hunter2
 dsvc get db-password
+dsvc get db-password --all
+dsvc get db-password --version 1
 dsvc update db-password new-value
 dsvc delete db-password
 dsvc logout
+```
+
+#### Get command options
+
+The `get` command supports retrieving secret versions:
+
+- `dsvc get <secretName>` - Retrieve the current version of a secret
+- `dsvc get <secretName> --all` - Retrieve all versions of a secret
+- `dsvc get <secretName> --version <versionNumber>` - Retrieve a specific version of a secret
+
+Examples:
+
+```bash
+# Get the current version
+dsvc get db-password
+
+# Get all versions (returns a list)
+dsvc get db-password --all
+
+# Get a specific version
+dsvc get db-password --version 2
 ```
 
 With no arguments, `dsvc` prints help and exits.
