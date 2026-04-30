@@ -6,6 +6,9 @@ Examples::
     dsvc ping
     dsvc login my-user
     dsvc create my-secret value
+    dsvc get my-secret
+    dsvc get my-secret --all
+    dsvc get my-secret --version 2
     dsvc --script commands.txt
 """
 
@@ -18,12 +21,12 @@ from client import Client, ClientException
 from config import is_configured, is_logged_in, load_config, save_config
 
 COMMAND_USAGE: dict[str, str] = {
-    "help": "help",
+    "help": "help, -h, --help",
     "ping": "ping",
     "login": "login <username>",
     "logout": "logout",
     "create": "create <secretName> <secretValue>",
-    "get": "get <secretName>",
+    "get": "get <secretName> [--version <versionNumber> | --all]",
     "update": "update <secretName> <updatedValue>",
     "delete": "delete <secretName>",
 }
@@ -34,17 +37,21 @@ COMMAND_ARGC: dict[str, int] = {
     "login": 2,
     "logout": 1,
     "create": 3,
-    "get": 2,
+    "get": -1,  # Variable arguments: 2, 3 (--all), or 4 (--version <version>)
     "update": 3,
     "delete": 2,
 }
 
 COMMAND_DESCRIPTIONS: dict[str, tuple[str, str]] = {
+    "help": ("Show this help message and exit.", "dsvc help"),
     "ping": ("Check server connectivity.", "dsvc ping"),
     "login": ("Store the username and start a session.", "dsvc login my-user"),
     "logout": ("Clear the stored username and end the session.", "dsvc logout"),
     "create": ("Create a secret.", "dsvc create db-password hunter2"),
-    "get": ("Retrieve a secret value.", "dsvc get db-password"),
+    "get": (
+        "Retrieve a secret value (current version by default).",
+        "dsvc get db-password",
+    ),
     "update": ("Update an existing secret value.", "dsvc update db-password new-value"),
     "delete": ("Delete a secret.", "dsvc delete db-password"),
 }
@@ -56,7 +63,8 @@ NO_LOGIN_REQUIRED = {"help", "login", "logout"}
 # Command runners
 # ---------------------------------------------------------------------------
 
-def _run_ping(client: Client, args: list[str]) -> None:
+
+def _run_ping(client: Client) -> None:
     response = client.ping()
     _print_http_response(response)
 
@@ -66,9 +74,50 @@ def _run_create(client: Client, args: list[str], username: str) -> None:
     _print_http_response(response)
 
 
+def _parse_get_options(args: list[str]) -> tuple[str, Optional[str]]:
+    """Parse get command options.
+
+    Returns: (secret_name, option_value)
+    - option_value is None for current version
+    - option_value is "all" for all versions
+    - option_value is the version number for a specific version
+    """
+    secret_name = args[1]
+
+    if len(args) == 2:
+        # get <secretName>
+        return secret_name, None
+    elif len(args) == 3 and args[2] == "--all":
+        # get <secretName> --all
+        return secret_name, "all"
+    elif len(args) == 4 and args[2] == "--version":
+        # get <secretName> --version <versionNumber>
+        return secret_name, args[3]
+    else:
+        return "", None  # Invalid
+
+
 def _run_get(client: Client, args: list[str], username: str) -> None:
-    response = client.get_secret(args[1], username)
-    _print_http_response(response)
+    secret_name, option_value = _parse_get_options(args)
+
+    if secret_name is None:
+        _print_invalid_parameters("get", COMMAND_USAGE["get"])
+        return
+
+    try:
+        if option_value is None:
+            # Get current version
+            response = client.get_secret(secret_name, username)
+        elif option_value == "all":
+            # Get all versions
+            response = client.get_all_secret_versions(secret_name, username)
+        else:
+            # Get specific version
+            response = client.get_secret_version(secret_name, option_value, username)
+
+        _print_http_response(response)
+    except ClientException as exc:
+        _print_request_failure(exc)
 
 
 def _run_update(client: Client, args: list[str], username: str) -> None:
@@ -102,7 +151,7 @@ def _run_login(config: dict, args: list[str]) -> dict:
     return config
 
 
-def _run_logout(config: dict, args: list[str]) -> dict:
+def _run_logout(config: dict) -> dict:
     if not str(config.get("username", "")).strip():
         print("You are already logged out.")
         return config
@@ -124,6 +173,20 @@ def _validate_command_arguments(args: list[str]) -> bool:
     expected_count = COMMAND_ARGC.get(command)
     if expected_count is None:
         return True
+    # Special handling for "get" which has variable arguments
+    if expected_count == -1:  # Variable arguments
+        if command == "get":
+            # get can have 2, 3 (--all), or 4 (--version <version>) arguments
+            if len(args) == 2:
+                return True  # get <secretName>
+            elif len(args) == 3 and args[2] == "--all":
+                return True  # get <secretName> --all
+            elif len(args) == 4 and args[2] == "--version":
+                return True  # get <secretName> --version <versionNumber>
+            else:
+                _print_invalid_parameters(command, COMMAND_USAGE[command])
+                return False
+        return True
     if len(args) == expected_count:
         return True
     _print_invalid_parameters(command, COMMAND_USAGE[command])
@@ -132,7 +195,9 @@ def _validate_command_arguments(args: list[str]) -> bool:
 
 def _print_missing_server_configuration() -> None:
     print("Server URL is not configured.")
-    print("Set 'base_url' in ~/.dsv_client/config.json or run the installer setup again.")
+    print(
+        "Set 'base_url' in ~/.dsv_client/config.json or run the installer setup again."
+    )
 
 
 def _run_command(client: Optional[Client], config: dict, args: list[str]) -> dict:
@@ -153,7 +218,7 @@ def _run_command(client: Optional[Client], config: dict, args: list[str]) -> dic
     if operation == "logout":
         if not _validate_command_arguments(args):
             return config
-        return _run_logout(config, args)
+        return _run_logout(config)
 
     if not _validate_command_arguments(args):
         return config
@@ -171,7 +236,7 @@ def _run_command(client: Optional[Client], config: dict, args: list[str]) -> dic
     try:
         match operation:
             case "ping":
-                _run_ping(client, args)
+                _run_ping(client)
             case "create":
                 _run_create(client, args, username)
             case "get":
@@ -192,6 +257,7 @@ def _run_command(client: Optional[Client], config: dict, args: list[str]) -> dic
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
+
 def _print_usage() -> None:
     print("DSV Client usage")
     print()
@@ -199,11 +265,24 @@ def _print_usage() -> None:
     print("  dsvc <command> [arguments]")
     print()
     print("Commands:")
-    for command in ("ping", "login", "logout", "create", "get", "update", "delete"):
+    for command in (
+        "help",
+        "ping",
+        "login",
+        "logout",
+        "create",
+        "get",
+        "update",
+        "delete",
+    ):
         description, example = COMMAND_DESCRIPTIONS[command]
         print(f"  {COMMAND_USAGE[command]}")
         print(f"      {description}")
         print(f"      Example: {example}")
+        # Add additional examples for get command options
+        if command == "get":
+            print(f"      Get all versions: dsvc get db-password --all")
+            print(f"      Get specific version: dsvc get db-password --version 2")
         print()
     print("Batch mode:")
     print("  dsvc --script <file>")
@@ -273,6 +352,7 @@ def _extract_response_message(body: str) -> str:
 # ---------------------------------------------------------------------------
 # Line parser (handles quoted tokens)
 # ---------------------------------------------------------------------------
+
 
 def _parse_line(line: str) -> list[str]:
     """Split *line* into tokens, respecting single- and double-quoted strings."""
@@ -344,9 +424,17 @@ def _run_script(script_file: str) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
+    # Check for help command or empty arguments early
+    if len(sys.argv) == 1 or (
+        len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help", "help")
+    ):
+        _print_usage()
+        return
+
     parser = argparse.ArgumentParser(
-        prog="dsvc", description="Distributed Secrets Vault CLI Client"
+        prog="dsvc", description="Distributed Secrets Vault CLI Client", add_help=False
     )
     parser.add_argument(
         "--script",

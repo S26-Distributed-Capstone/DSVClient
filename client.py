@@ -69,6 +69,22 @@ class Client:
             path += f"?user={urllib.parse.quote(auth_key, safe='')}"
         return self._send("GET", path, None, 200)
 
+    def get_secret_version(self, secret_name: str, version: str, auth_key: str = "") -> str:
+        encoded_name = urllib.parse.quote(secret_name, safe="")
+        path = f"{self.SECRETS_PATH}/{encoded_name}"
+        params = [f"version={urllib.parse.quote(version, safe='')}"]
+        if auth_key:
+            params.append(f"user={urllib.parse.quote(auth_key, safe='')}")
+        path += "?" + "&".join(params)
+        return self._send("GET", path, None, 200)
+
+    def get_all_secret_versions(self, secret_name: str, auth_key: str = "") -> str:
+        encoded_name = urllib.parse.quote(secret_name, safe="")
+        path = f"{self.SECRETS_PATH}/{encoded_name}/all"
+        if auth_key:
+            path += f"?user={urllib.parse.quote(auth_key, safe='')}"
+        return self._send("GET", path, None, 200)
+
     def update_secret(
         self, secret_name: str, secret_updated_value: str, auth_key: str
     ) -> str:
@@ -156,4 +172,3 @@ class Client:
             return HTTPStatus(status_code).phrase
         except ValueError:
             return ""
-

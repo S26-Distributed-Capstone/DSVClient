@@ -7,7 +7,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 
 class MockDsvHandler(BaseHTTPRequestHandler):
@@ -17,13 +17,24 @@ class MockDsvHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        query_params = parse_qs(parsed.query)
 
         if path == "/health":
             self._respond(200, "OK")
             return
 
         if path == "/api/v1/secrets/my-secret":
+            # Check if version parameter is present
+            if "version" in query_params:
+                version = query_params["version"][0]
+                self._respond(200, f"version-{version}")
+                return
             self._respond(200, "retrieved")
+            return
+
+        # Handle get all versions: /api/v1/secrets/my-secret/all
+        if path == "/api/v1/secrets/my-secret/all":
+            self._respond(200, '["version1", "version2", "version3"]')
             return
 
         if path == "/api/v1/secrets/missing":
@@ -221,7 +232,7 @@ class CliTest(unittest.TestCase):
         result = self._run_cli([])
 
         self.assertEqual(0, result.returncode)
-        self.assertIn("usage:", result.stdout)
+        self.assertIn("DSV Client usage", result.stdout)
         self.assertIn("dsvc --script <file>", result.stdout)
 
     def test_repl_command_is_rejected(self):
@@ -311,6 +322,53 @@ class CliTest(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode)
         self.assertIn("Please log in first: dsvc login <username>", result.stdout)
+
+    def test_get_current_version_still_works(self):
+        result = self._run_cli(["get", "my-secret"])
+        self.assertEqual(0, result.returncode)
+        self.assertIn("retrieved", result.stdout)
+
+    def test_get_all_versions(self):
+        result = self._run_cli(["get", "my-secret", "--all"])
+        self.assertEqual(0, result.returncode)
+        self.assertIn("version1", result.stdout)
+        self.assertIn("version2", result.stdout)
+        self.assertIn("version3", result.stdout)
+
+    def test_get_specific_version(self):
+        result = self._run_cli(["get", "my-secret", "--version", "2"])
+        self.assertEqual(0, result.returncode)
+        self.assertIn("version-2", result.stdout)
+
+    def test_get_with_invalid_version_option_syntax(self):
+        result = self._run_cli(["get", "my-secret", "--version"])
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Invalid parameters for 'get'.", result.stdout)
+        self.assertIn("Expected:", result.stdout)
+
+    def test_get_with_unknown_option(self):
+        result = self._run_cli(["get", "my-secret", "--unknown"])
+        self.assertEqual(0, result.returncode)
+        self.assertIn("Invalid parameters for 'get'.", result.stdout)
+
+    def test_get_all_versions_in_script_mode(self):
+        result = self._run_cli(
+            ["--script", self._build_script(["login alice", "get my-secret --all"])],
+            cleanup_script=True,
+            config_data={"base_url": self.base_url, "username": ""},
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertIn("version1", result.stdout)
+        self.assertIn("version2", result.stdout)
+
+    def test_get_specific_version_in_script_mode(self):
+        result = self._run_cli(
+            ["--script", self._build_script(["login alice", "get my-secret --version 3"])],
+            cleanup_script=True,
+            config_data={"base_url": self.base_url, "username": ""},
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertIn("version-3", result.stdout)
 
 
 if __name__ == "__main__":
